@@ -1,6 +1,6 @@
-mod main_view;
-mod detail_view;
 mod charts;
+mod detail_view;
+mod main_view;
 
 use super::app::App;
 use ratatui::Frame;

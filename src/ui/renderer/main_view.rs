@@ -234,11 +234,9 @@ fn render_table(app: &App, frame: &mut Frame, area: Rect) {
                 // Program ID (full or truncated based on toggle)
                 Cell::from(program_display).style(Style::default().fg(app.theme.gray)),
                 // TPS (color coded: green=low, amber=medium, red=high)
-                Cell::from(format!("{:.1}", stat.tx_per_sec))
-                    .style(Style::default().fg(tps_color)),
+                Cell::from(format!("{:.1}", stat.tx_per_sec)).style(Style::default().fg(tps_color)),
                 // CU/s (color coded based on compute intensity)
-                Cell::from(format_cu(stat.cu_per_sec))
-                    .style(Style::default().fg(cu_per_sec_color)),
+                Cell::from(format_cu(stat.cu_per_sec)).style(Style::default().fg(cu_per_sec_color)),
                 // Avg CU (color coded based on efficiency)
                 Cell::from(format_cu(stat.avg_cu)).style(Style::default().fg(avg_cu_color)),
                 // Min CU
@@ -311,8 +309,7 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         })
         .collect();
 
-    let footer =
-        Paragraph::new(Line::from(spans)).style(Style::default().bg(app.theme.background));
+    let footer = Paragraph::new(Line::from(spans)).style(Style::default().bg(app.theme.background));
 
     frame.render_widget(footer, area);
 }

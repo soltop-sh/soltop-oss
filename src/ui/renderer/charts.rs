@@ -183,11 +183,7 @@ pub fn render_success_chart(app: &App, frame: &mut Frame, area: Rect, detail: &P
         .title("Success Rate (%)")
         .style(app.theme.muted_style())
         .bounds([0.0, 100.0])
-        .labels(vec![
-            Span::raw("0%"),
-            Span::raw("50%"),
-            Span::raw("100%"),
-        ]);
+        .labels(vec![Span::raw("0%"), Span::raw("50%"), Span::raw("100%")]);
 
     // Create chart
     let chart = Chart::new(vec![dataset])
@@ -215,14 +211,8 @@ fn generate_time_labels(app: &App, slot_count: usize) -> Vec<Span<'static>> {
     let total_minutes = total_seconds / 60;
 
     vec![
-        Span::styled(
-            format!("-{}m", total_minutes),
-            app.theme.muted_style(),
-        ),
-        Span::styled(
-            format!("-{}m", total_minutes / 2),
-            app.theme.muted_style(),
-        ),
+        Span::styled(format!("-{}m", total_minutes), app.theme.muted_style()),
+        Span::styled(format!("-{}m", total_minutes / 2), app.theme.muted_style()),
         Span::styled("now", app.theme.muted_style()),
     ]
 }
