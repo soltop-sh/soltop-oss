@@ -5,6 +5,10 @@
 
 mod app;
 mod theme;
+mod types;
+mod formatting;
+mod input;
+mod renderer;
 
 pub use app::App;
 pub use theme::Theme;
