@@ -142,4 +142,25 @@ impl ProgramStats {
         // Use minimum of 1 second to avoid infinity/huge numbers at startup
         time_span.max(1.0)
     }
+
+    /// Get a reference to the slot timeline (for detail views)
+    /// Returns a vector of slot stats for display
+    pub fn get_slot_timeline(&self) -> Vec<&SlotStats> {
+        self.slot_timeline.iter().collect()
+    }
+    
+    /// Get the number of slots with activity
+    pub fn slot_count(&self) -> usize {
+        self.slot_timeline.len()
+    }
+    
+    /// Get the timestamp of the first slot (oldest data)
+    pub fn first_slot_timestamp(&self) -> Option<Instant> {
+        self.slot_timeline.iter().next().map(|s| s.timestamp)
+    }
+    
+    /// Get the timestamp of the last slot (newest data)
+    pub fn last_slot_timestamp(&self) -> Option<Instant> {
+        self.slot_timeline.iter().last().map(|s| s.timestamp)
+    }
 }

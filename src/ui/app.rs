@@ -14,6 +14,7 @@ use std::cmp::Reverse;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
+use std::time::Instant;
 
 /// View mode for displaying statistics
 #[derive(Clone, Copy, PartialEq)]
@@ -32,6 +33,15 @@ pub struct App {
 
     /// Currently selected row in the table
     pub selected_row: usize,
+
+    /// Whether we're showing the detail view (true) or main table (false)
+    showing_detail: bool,
+
+    /// Program ID of the currently selected program (for detail view)
+    selected_program_id: Option<String>,
+
+    /// Cached program detail for the currently selected program
+    cached_program_detail: Option<ProgramDetail>,
 
     cached_stats: Vec<ProgramStatsDisplay>,
 
@@ -60,6 +70,9 @@ impl App {
             network_state,
             running: true,
             selected_row: 0,
+            showing_detail: false,
+            selected_program_id: None,
+            cached_program_detail: None,
             cached_stats: vec![],
             cached_network_stats: NetworkStatsDisplay {
                 current_slot: 0,
@@ -85,6 +98,13 @@ impl App {
         let (program_stats, network_stats) = self.get_stats().await;
         self.cached_stats = program_stats;
         self.cached_network_stats = network_stats;
+
+        // Update detail view if showing
+        if self.showing_detail {
+            if let Some(program_id) = &self.selected_program_id {
+                self.cached_program_detail = self.get_program_detail(program_id).await;
+            }
+        }
 
         // Exit loading state once we have data
         if self.cached_network_stats.current_slot > 0 {
@@ -149,22 +169,27 @@ impl App {
             return;
         }
 
-        // Create main layout: header + network overview + table + footer
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(5), // Header (normal size)
-                Constraint::Length(3), // Network Overview
-                Constraint::Min(10),   // Table (takes remaining space)
-                Constraint::Length(1), // Footer
-            ])
-            .split(area);
+        // Show detail view if active, otherwise show main view
+        if self.showing_detail {
+            self.render_detail_view(frame, area);
+        } else {
+            // Create main layout: header + network overview + table + footer
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(5), // Header (normal size)
+                    Constraint::Length(3), // Network Overview
+                    Constraint::Min(10),   // Table (takes remaining space)
+                    Constraint::Length(1), // Footer
+                ])
+                .split(area);
 
-        // Render sections
-        self.render_header(frame, chunks[0]);
-        self.render_network_overview(frame, chunks[1]);
-        self.render_table(frame, chunks[2]);
-        self.render_footer(frame, chunks[3]);
+            // Render sections
+            self.render_header(frame, chunks[0]);
+            self.render_network_overview(frame, chunks[1]);
+            self.render_table(frame, chunks[2]);
+            self.render_footer(frame, chunks[3]);
+        }
     }
 
     /// Render the loading screen with logo
@@ -341,7 +366,11 @@ impl App {
         let rows: Vec<Row> = self
             .get_cached_stats()
             .iter()
-            .map(|stat| {
+            .enumerate()
+            .map(|(index, stat)| {
+                // Determine if this row is selected
+                let is_selected = index == self.selected_row && !self.showing_detail;
+
                 // Color code based on metrics
                 let tps_color = self.theme.tps_color(stat.tx_per_sec);
                 let success_color = self.theme.success_rate_color(stat.success_rate);
@@ -353,6 +382,15 @@ impl App {
                     format!("{}...", &stat.program_id[..8.min(stat.program_id.len())])
                 } else {
                     stat.program_id.clone()
+                };
+
+                // Apply selection highlighting
+                let row_style = if is_selected {
+                    Style::default()
+                        .bg(self.theme.border)  // Background highlight
+                        .fg(self.theme.neon_green)  // Text color
+                } else {
+                    Style::default()
                 };
 
                 Row::new(vec![
@@ -376,6 +414,7 @@ impl App {
                     Cell::from(format!("{:.1}%", stat.success_rate))
                         .style(Style::default().fg(success_color)),
                 ])
+                .style(row_style)
             })
             .collect();
 
@@ -405,16 +444,108 @@ impl App {
 
         frame.render_widget(table, area);
     }
+    
+    fn render_detail_view(&self, frame: &mut Frame, area: Rect) {
+        let detail = match &self.cached_program_detail {
+            Some(d) => d,
+            None => {
+                // Show loading or error message
+                let error_text = Paragraph::new("Loading program details...")
+                    .style(self.theme.muted_style())
+                    .alignment(Alignment::Center);
+                frame.render_widget(error_text, area);
+                return;
+            }
+        };
+        
+        // Create layout
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),  // Header
+                Constraint::Min(15),    // Stats content
+                Constraint::Length(1),  // Footer
+            ])
+            .split(area);
+        
+        // Header
+        let header_block = Block::default()
+            .title(format!(" Program Details: {} ", detail.program_id))
+            .borders(Borders::ALL)
+            .border_style(self.theme.border_style())
+            .title_style(self.theme.header_style());
+        frame.render_widget(header_block, chunks[0]);
+        
+        // Content area with statistics
+        let content_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(10), // Main stats
+                Constraint::Min(5),     // Historical data (if available)
+            ])
+            .split(chunks[1]);
+        
+        // Main statistics block
+        let stats_block = Block::default()
+            .title(" Statistics ")
+            .borders(Borders::ALL)
+            .border_style(self.theme.border_style());
+        
+        let stats_inner = stats_block.inner(content_chunks[0]);
+        frame.render_widget(stats_block, content_chunks[0]);
+        
+        // Format statistics text
+        let mut stats_text = vec![
+            format!("Total Transactions: {}", format_large_number(detail.total_txs as u64)),
+            format!("Transactions/sec:   {:.2}", detail.tx_per_sec),
+            format!("Success Rate:       {:.2}%", detail.success_rate),
+            format!("Compute Units/sec:  {}", format_cu(detail.cu_per_sec)),
+            format!("Avg CU/tx:          {}", format_cu(detail.avg_cu)),
+            format!("Min CU:             {}", format_cu(detail.min_cu as f64)),
+            format!("Max CU:             {}", format_cu(detail.max_cu as f64)),
+            format!("Active Slots:       {}", detail.slot_count),
+        ];
+        
+        // Add first seen / last seen if available
+        if let Some(first_seen) = detail.first_seen {
+            let elapsed = first_seen.elapsed();
+            stats_text.push(format!("First Seen:         {} ago", format_duration(elapsed)));
+        }
+        if let Some(last_seen) = detail.last_seen {
+            let elapsed = last_seen.elapsed();
+            stats_text.push(format!("Last Activity:      {} ago", format_duration(elapsed)));
+        }
+        
+        let stats_paragraph = Paragraph::new(stats_text.join("\n"))
+            .style(self.theme.normal_style());
+        frame.render_widget(stats_paragraph, stats_inner);
+        
+        // Footer
+        let footer_text = Paragraph::new("Press ESC to return")
+            .style(self.theme.muted_style())
+            .alignment(Alignment::Center);
+        frame.render_widget(footer_text, chunks[2]);
+    }
 
     /// Render the footer with keyboard shortcuts
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
         // htop-style keyboard shortcuts
-        let footer_text = [
-            ("t", "Toggle IDs"),
-            ("u", "Filter System"),
-            ("w", "Window View"),
-            ("q", "Quit"),
-        ];
+        let footer_text: &[(&str, &str)] = if self.showing_detail {
+            // Detail view shortcuts
+            &[
+                ("ESC", "Back"),
+            ]
+        } else {
+            // Main view shortcuts
+            &[
+                ("↑/↓", "Navigate"),
+                ("ENTER", "View Details"),
+                ("t", "Toggle IDs"),
+                ("u", "Filter System"),
+                ("w", "Window View"),
+                ("q", "Quit"),
+            ]
+        };
 
         let spans: Vec<Span> = footer_text
             .iter()
@@ -436,7 +567,17 @@ impl App {
     /// Handle keyboard input
     fn handle_key(&mut self, key: KeyCode) {
         match key {
-            KeyCode::Char('q') | KeyCode::Esc | KeyCode::F(10) => {
+            KeyCode::Esc => {
+                if self.showing_detail {
+                    // Return to main view from detail view
+                    self.showing_detail = false;
+                    self.selected_program_id = None;
+                } else {
+                    // Quit from main view
+                    self.running = false;
+                }
+            }
+            KeyCode::Char('q') | KeyCode::F(10) => {
                 self.running = false;
             }
             KeyCode::Char('t') => {
@@ -455,10 +596,24 @@ impl App {
                 };
             }
             KeyCode::Down => {
-                // TODO: Move selection down (we'll implement this later)
+                if !self.showing_detail {
+                    let max_row = self.cached_stats.len().saturating_sub(1);
+                    self.selected_row = (self.selected_row + 1).min(max_row);
+                }
             }
             KeyCode::Up => {
-                // TODO: Move selection up (we'll implement this later)
+                if !self.showing_detail {
+                    self.selected_row = self.selected_row.saturating_sub(1);
+                }
+            }
+
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                if !self.showing_detail {
+                    if let Some(stat) = self.cached_stats.get(self.selected_row) {
+                        self.selected_program_id = Some(stat.program_id.clone());
+                        self.showing_detail = true;
+                    }
+                }
             }
             _ => {}
         }
@@ -537,6 +692,42 @@ impl App {
 
         (display, network_stats)
     }
+
+    /// Get the program stats for the selected program
+    async fn get_program_detail(&self, program_id: &str) -> Option<ProgramDetail> {
+        let state = self.network_state.read().await;
+        
+        // Find the program in the network state
+        let program_stats = state.programs.get(program_id)?;
+        
+        // Calculate detailed metrics
+        let total_txs = program_stats.total_transactions();
+        let success_rate = program_stats.success_rate();
+        let tx_per_sec = program_stats.transactions_per_second();
+        let cu_per_sec = program_stats.cu_per_second();
+        let avg_cu = program_stats.avg_cu_per_transaction();
+        let min_cu = program_stats.min_cu();
+        let max_cu = program_stats.max_cu();
+        
+        // Get slot timeline data using the new methods
+        let slot_count = program_stats.slot_count();
+        let first_seen = program_stats.first_slot_timestamp();
+        let last_seen = program_stats.last_slot_timestamp();
+        
+        Some(ProgramDetail {
+            program_id: program_id.to_string(),
+            total_txs,
+            success_rate,
+            tx_per_sec,
+            cu_per_sec,
+            avg_cu,
+            min_cu,
+            max_cu,
+            slot_count,
+            first_seen,
+            last_seen,
+        })
+    }
 }
 
 /// Struct for displaying program stats in UI
@@ -549,6 +740,21 @@ pub struct ProgramStatsDisplay {
     pub avg_cu: f64,
     pub min_cu: u64,
     pub max_cu: u64,
+}
+
+/// Struct for displaying detailed program statistics
+pub struct ProgramDetail {
+    pub program_id: String,
+    pub total_txs: u32,
+    pub success_rate: f64,
+    pub tx_per_sec: f64,
+    pub cu_per_sec: f64,
+    pub avg_cu: f64,
+    pub min_cu: u64,
+    pub max_cu: u64,
+    pub slot_count: usize,
+    pub first_seen: Option<Instant>,
+    pub last_seen: Option<Instant>,
 }
 
 /// Struct for displaying network-wide aggregate statistics
