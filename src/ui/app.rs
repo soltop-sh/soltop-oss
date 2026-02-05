@@ -1,13 +1,16 @@
 use super::Theme;
-use crate::stats::{is_system_program, NetworkState};
+use crate::stats::{is_system_program, NetworkState, SlotStats};
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::Style,
+    symbols,
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
+    widgets::{
+        Axis, Block, Borders, Cell, Chart, Dataset, GraphType,
+        Paragraph, Row, Table},
     Frame, Terminal,
 };
 use std::cmp::Reverse;
@@ -23,6 +26,13 @@ enum ViewMode {
     Window, // Shows aggregate stats for entire window
 }
 
+/// Type of chart to display in detail view
+#[derive(Clone, Copy, PartialEq)]
+enum ChartType {
+    Transactions,  // Transaction count over time
+    ComputeUnits,  // CU consumption over time
+    SuccessRate,   // Success percentage over time
+}
 /// Main TUI application
 pub struct App {
     /// Reference to shared network state (updated by NetworkMonitor)
@@ -61,6 +71,9 @@ pub struct App {
 
     /// Loading state - true until first data arrives
     loading: bool,
+
+    /// Current chart type being displayed
+    current_chart: ChartType,
 }
 
 impl App {
@@ -90,6 +103,7 @@ impl App {
             hide_system_programs: false,
             view_mode: ViewMode::Live,
             loading: true,
+            current_chart: ChartType::Transactions,
         }
     }
 
@@ -449,7 +463,7 @@ impl App {
         let detail = match &self.cached_program_detail {
             Some(d) => d,
             None => {
-                // Show loading or error message
+                // Show loading message
                 let error_text = Paragraph::new("Loading program details...")
                     .style(self.theme.muted_style())
                     .alignment(Alignment::Center);
@@ -458,13 +472,14 @@ impl App {
             }
         };
         
-        // Create layout
+        // Create main layout
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),  // Header
-                Constraint::Min(15),    // Stats content
-                Constraint::Length(1),  // Footer
+                Constraint::Length(3),   // Header
+                Constraint::Length(10),  // Stats summary
+                Constraint::Min(12),     // Chart area
+                Constraint::Length(1),   // Footer
             ])
             .split(area);
         
@@ -476,63 +491,26 @@ impl App {
             .title_style(self.theme.header_style());
         frame.render_widget(header_block, chunks[0]);
         
-        // Content area with statistics
-        let content_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(10), // Main stats
-                Constraint::Min(5),     // Historical data (if available)
-            ])
-            .split(chunks[1]);
+        // Stats summary
+        self.render_detail_stats(frame, chunks[1], detail);
         
-        // Main statistics block
-        let stats_block = Block::default()
-            .title(" Statistics ")
-            .borders(Borders::ALL)
-            .border_style(self.theme.border_style());
-        
-        let stats_inner = stats_block.inner(content_chunks[0]);
-        frame.render_widget(stats_block, content_chunks[0]);
-        
-        // Format statistics text
-        let mut stats_text = vec![
-            format!("Total Transactions: {}", format_large_number(detail.total_txs as u64)),
-            format!("Transactions/sec:   {:.2}", detail.tx_per_sec),
-            format!("Success Rate:       {:.2}%", detail.success_rate),
-            format!("Compute Units/sec:  {}", format_cu(detail.cu_per_sec)),
-            format!("Avg CU/tx:          {}", format_cu(detail.avg_cu)),
-            format!("Min CU:             {}", format_cu(detail.min_cu as f64)),
-            format!("Max CU:             {}", format_cu(detail.max_cu as f64)),
-            format!("Active Slots:       {}", detail.slot_count),
-        ];
-        
-        // Add first seen / last seen if available
-        if let Some(first_seen) = detail.first_seen {
-            let elapsed = first_seen.elapsed();
-            stats_text.push(format!("First Seen:         {} ago", format_duration(elapsed)));
-        }
-        if let Some(last_seen) = detail.last_seen {
-            let elapsed = last_seen.elapsed();
-            stats_text.push(format!("Last Activity:      {} ago", format_duration(elapsed)));
-        }
-        
-        let stats_paragraph = Paragraph::new(stats_text.join("\n"))
-            .style(self.theme.normal_style());
-        frame.render_widget(stats_paragraph, stats_inner);
+        // Chart
+        self.render_detail_chart(frame, chunks[2]);
         
         // Footer
-        let footer_text = Paragraph::new("Press ESC to return")
+        let footer_text = Paragraph::new("Press ESC to return | TAB to switch chart")
             .style(self.theme.muted_style())
             .alignment(Alignment::Center);
-        frame.render_widget(footer_text, chunks[2]);
+        frame.render_widget(footer_text, chunks[3]);
     }
 
     /// Render the footer with keyboard shortcuts
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
         // htop-style keyboard shortcuts
         let footer_text: &[(&str, &str)] = if self.showing_detail {
-            // Detail view shortcuts
+            // Detail view shortcuts with chart info
             &[
+                ("TAB", "Switch Chart"),
                 ("ESC", "Back"),
             ]
         } else {
@@ -562,6 +540,284 @@ impl App {
             Paragraph::new(Line::from(spans)).style(Style::default().bg(self.theme.background));
 
         frame.render_widget(footer, area);
+    }
+
+    /// Render the statistics summary panel
+    fn render_detail_stats(&self, frame: &mut Frame, area: Rect, detail: &ProgramDetail) {
+        let stats_block = Block::default()
+            .title(" Statistics ")
+            .borders(Borders::ALL)
+            .border_style(self.theme.border_style());
+        
+        let stats_inner = stats_block.inner(area);
+        frame.render_widget(stats_block, area);
+        
+        // Format statistics text
+        let mut stats_text = vec![
+            format!("Total Transactions: {}  │  Transactions/sec: {:.2}", 
+                format_large_number(detail.total_txs as u64), detail.tx_per_sec),
+            format!("Success Rate: {:.2}%  │  Compute Units/sec: {}", 
+                detail.success_rate, format_cu(detail.cu_per_sec)),
+            format!("Avg CU/tx: {}  │  Min CU: {}  │  Max CU: {}", 
+                format_cu(detail.avg_cu), 
+                format_cu(detail.min_cu as f64),
+                format_cu(detail.max_cu as f64)),
+            format!("Active Slots: {}", detail.slot_count),
+        ];
+        
+        // Add first seen / last seen if available
+        if let Some(first_seen) = detail.first_seen {
+            let elapsed = first_seen.elapsed();
+            stats_text.push(format!("First Seen: {} ago", format_duration(elapsed)));
+        }
+        if let Some(last_seen) = detail.last_seen {
+            let elapsed = last_seen.elapsed();
+            stats_text.push(format!("Last Activity: {} ago", format_duration(elapsed)));
+        }
+        
+        let stats_paragraph = Paragraph::new(stats_text.join("\n"))
+            .style(self.theme.normal_style());
+        frame.render_widget(stats_paragraph, stats_inner);
+    }
+
+    /// Render the time series chart in detail view
+    fn render_detail_chart(&self, frame: &mut Frame, area: Rect) {
+        let detail = match &self.cached_program_detail {
+            Some(d) => d,
+            None => return,
+        };
+        
+        if detail.slot_timeline.is_empty() {
+            let placeholder = Paragraph::new("No timeline data available")
+                .style(self.theme.muted_style())
+                .alignment(Alignment::Center);
+            frame.render_widget(placeholder, area);
+            return;
+        }
+        
+        // Render based on current chart type
+        match self.current_chart {
+            ChartType::Transactions => self.render_tx_chart(frame, area, detail),
+            ChartType::ComputeUnits => self.render_cu_chart(frame, area, detail),
+            ChartType::SuccessRate => self.render_success_chart(frame, area, detail),
+        }
+    }
+
+    /// Render transaction count chart
+    fn render_tx_chart(&self, frame: &mut Frame, area: Rect, detail: &ProgramDetail) {
+        // Transform slot data to chart points
+        let data: Vec<(f64, f64)> = detail
+            .slot_timeline
+            .iter()
+            .enumerate()
+            .map(|(i, slot)| (i as f64, slot.tx_count as f64))
+            .collect();
+        
+        if data.is_empty() {
+            return;
+        }
+        
+        // Calculate bounds
+        let max_tx = detail
+            .slot_timeline
+            .iter()
+            .map(|s| s.tx_count)
+            .max()
+            .unwrap_or(1) as f64;
+        
+        let y_max = (max_tx * 1.1).max(1.0); // Add 10% padding
+        
+        // Create dataset
+        let dataset = Dataset::default()
+            .name("Transactions")
+            .marker(symbols::Marker::Braille)  // Use Braille for smooth lines
+            .graph_type(GraphType::Line)
+            .style(Style::default().fg(self.theme.neon_green))
+            .data(&data);
+        
+        // Create X axis
+        let x_labels = self.generate_time_labels(detail.slot_timeline.len());
+        let x_axis = Axis::default()
+            .title("Time")
+            .style(self.theme.muted_style())
+            .bounds([0.0, data.len() as f64])
+            .labels(x_labels);
+        
+        // Create Y axis
+        let y_axis = Axis::default()
+            .title("Tx Count")
+            .style(self.theme.muted_style())
+            .bounds([0.0, y_max])
+            .labels(vec![
+                Span::raw("0"),
+                Span::raw(format!("{:.0}", y_max / 2.0)),
+                Span::raw(format!("{:.0}", y_max)),
+            ]);
+        
+        // Create chart
+        let chart = Chart::new(vec![dataset])
+            .block(
+                Block::default()
+                    .title(" Transaction Activity (Last 5min) ")
+                    .borders(Borders::ALL)
+                    .border_style(self.theme.border_style())
+                    .title_style(self.theme.header_style()),
+            )
+            .x_axis(x_axis)
+            .y_axis(y_axis);
+        
+        frame.render_widget(chart, area);
+    }
+
+    /// Render compute units chart
+    fn render_cu_chart(&self, frame: &mut Frame, area: Rect, detail: &ProgramDetail) {
+        // Transform slot data to CU points
+        let data: Vec<(f64, f64)> = detail
+            .slot_timeline
+            .iter()
+            .enumerate()
+            .map(|(i, slot)| (i as f64, slot.total_cu as f64))
+            .collect();
+        
+        if data.is_empty() {
+            return;
+        }
+        
+        // Calculate bounds
+        let max_cu = detail
+            .slot_timeline
+            .iter()
+            .map(|s| s.total_cu)
+            .max()
+            .unwrap_or(1) as f64;
+        
+        let y_max = (max_cu * 1.1).max(1.0);
+        
+        // Create dataset with cyan color
+        let dataset = Dataset::default()
+            .name("Compute Units")
+            .marker(symbols::Marker::Braille)
+            .graph_type(GraphType::Line)
+            .style(Style::default().fg(self.theme.cyan))
+            .data(&data);
+        
+        // Create axes
+        let x_labels = self.generate_time_labels(detail.slot_timeline.len());
+        let x_axis = Axis::default()
+            .title("Time")
+            .style(self.theme.muted_style())
+            .bounds([0.0, data.len() as f64])
+            .labels(x_labels);
+        
+        let y_axis = Axis::default()
+            .title("Compute Units")
+            .style(self.theme.muted_style())
+            .bounds([0.0, y_max])
+            .labels(vec![
+                Span::raw("0"),
+                Span::raw(format_cu(y_max / 2.0)),
+                Span::raw(format_cu(y_max)),
+            ]);
+        
+        // Create chart
+        let chart = Chart::new(vec![dataset])
+            .block(
+                Block::default()
+                    .title(" Compute Units Usage (Last 5min) ")
+                    .borders(Borders::ALL)
+                    .border_style(self.theme.border_style())
+                    .title_style(self.theme.header_style()),
+            )
+            .x_axis(x_axis)
+            .y_axis(y_axis);
+        
+        frame.render_widget(chart, area);
+    }
+
+    /// Render success rate chart
+    fn render_success_chart(&self, frame: &mut Frame, area: Rect, detail: &ProgramDetail) {
+        // Calculate success rate per slot
+        let data: Vec<(f64, f64)> = detail
+            .slot_timeline
+            .iter()
+            .enumerate()
+            .map(|(i, slot)| {
+                let rate = if slot.tx_count > 0 {
+                    (slot.success_count as f64 / slot.tx_count as f64) * 100.0
+                } else {
+                    100.0 // No transactions = 100% success by default
+                };
+                (i as f64, rate)
+            })
+            .collect();
+        
+        if data.is_empty() {
+            return;
+        }
+        
+        // Create dataset with color based on average success rate
+        let color = self.theme.success_rate_color(detail.success_rate);
+        let dataset = Dataset::default()
+            .name("Success Rate")
+            .marker(symbols::Marker::Braille)
+            .graph_type(GraphType::Line)
+            .style(Style::default().fg(color))
+            .data(&data);
+        
+        // Create axes
+        let x_labels = self.generate_time_labels(detail.slot_timeline.len());
+        let x_axis = Axis::default()
+            .title("Time")
+            .style(self.theme.muted_style())
+            .bounds([0.0, data.len() as f64])
+            .labels(x_labels);
+        
+        let y_axis = Axis::default()
+            .title("Success Rate (%)")
+            .style(self.theme.muted_style())
+            .bounds([0.0, 100.0])
+            .labels(vec![
+                Span::raw("0%"),
+                Span::raw("50%"),
+                Span::raw("100%"),
+            ]);
+        
+        // Create chart
+        let chart = Chart::new(vec![dataset])
+            .block(
+                Block::default()
+                    .title(" Success Rate (Last 5min) ")
+                    .borders(Borders::ALL)
+                    .border_style(self.theme.border_style())
+                    .title_style(self.theme.header_style()),
+            )
+            .x_axis(x_axis)
+            .y_axis(y_axis);
+        
+        frame.render_widget(chart, area);
+    }
+
+    /// Generate time labels for chart X-axis
+    fn generate_time_labels(&self, slot_count: usize) -> Vec<Span<'static>> {
+        if slot_count == 0 {
+            return vec![Span::raw("now")];
+        }
+        
+        // Assuming ~400ms per slot, calculate approximate minutes
+        let total_seconds = (slot_count as f64 * 0.4).round() as u64;
+        let total_minutes = total_seconds / 60;
+        
+        vec![
+            Span::styled(
+                format!("-{}m", total_minutes),
+                self.theme.muted_style(),
+            ),
+            Span::styled(
+                format!("-{}m", total_minutes / 2),
+                self.theme.muted_style(),
+            ),
+            Span::styled("now", self.theme.muted_style()),
+        ]
     }
 
     /// Handle keyboard input
@@ -613,6 +869,17 @@ impl App {
                         self.selected_program_id = Some(stat.program_id.clone());
                         self.showing_detail = true;
                     }
+                }
+            }
+
+            KeyCode::Tab => {
+                if self.showing_detail {
+                    // Cycle through chart types
+                    self.current_chart = match self.current_chart {
+                        ChartType::Transactions => ChartType::ComputeUnits,
+                        ChartType::ComputeUnits => ChartType::SuccessRate,
+                        ChartType::SuccessRate => ChartType::Transactions,
+                    };
                 }
             }
             _ => {}
@@ -714,6 +981,13 @@ impl App {
         let first_seen = program_stats.first_slot_timestamp();
         let last_seen = program_stats.last_slot_timestamp();
         
+        // Clone slot timeline data for rendering
+        let slot_timeline: Vec<SlotStats> = program_stats
+        .get_slot_timeline()
+        .into_iter()
+        .cloned()  // Clone each SlotStats
+        .collect();
+
         Some(ProgramDetail {
             program_id: program_id.to_string(),
             total_txs,
@@ -726,6 +1000,7 @@ impl App {
             slot_count,
             first_seen,
             last_seen,
+            slot_timeline,
         })
     }
 }
@@ -755,6 +1030,7 @@ pub struct ProgramDetail {
     pub slot_count: usize,
     pub first_seen: Option<Instant>,
     pub last_seen: Option<Instant>,
+    pub slot_timeline: Vec<SlotStats>, 
 }
 
 /// Struct for displaying network-wide aggregate statistics

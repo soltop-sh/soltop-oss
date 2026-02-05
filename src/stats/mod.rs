@@ -8,5 +8,5 @@ mod ring_buffer;
 pub use filter::is_system_program;
 pub use monitor::{MonitorConfig, NetworkMonitor};
 pub use network::NetworkState;
-pub use program::ProgramStats;
+pub use program::{ProgramStats, SlotStats};
 pub use ring_buffer::RingBuffer;
