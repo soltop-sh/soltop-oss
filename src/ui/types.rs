@@ -16,6 +16,13 @@ pub enum ChartType {
     SuccessRate,   // Success percentage over time
 }
 
+/// Display mode for detail view
+#[derive(Clone, Copy, PartialEq)]
+pub enum DetailViewMode {
+    AllCharts,   // Show all 3 charts at once
+    FullScreen,  // Show single chart full size
+}
+
 /// Struct for displaying program stats in UI
 pub struct ProgramStatsDisplay {
     pub program_id: String,

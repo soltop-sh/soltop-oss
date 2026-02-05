@@ -1,7 +1,7 @@
 use super::charts;
 use crate::ui::app::App;
 use crate::ui::formatting::{format_cu, format_duration, format_large_number};
-use crate::ui::types::{ChartType, ProgramDetail};
+use crate::ui::types::{ChartType, DetailViewMode, ProgramDetail};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     widgets::{Block, Borders, Paragraph},
@@ -47,11 +47,15 @@ pub fn render_detail_view(app: &App, frame: &mut Frame, area: Rect) {
     // Chart
     render_detail_chart(app, frame, chunks[2]);
 
-    // Footer
-    let footer_text = Paragraph::new("Press ESC to return | TAB to switch chart")
+    // Footer - update based on mode
+    let footer_text = match app.detail_view_mode {
+        DetailViewMode::AllCharts => "Press TAB for full-screen | ESC to return",
+        DetailViewMode::FullScreen => "Press TAB to cycle/exit | ESC to return",
+    };
+    let footer = Paragraph::new(footer_text)
         .style(app.theme.muted_style())
         .alignment(Alignment::Center);
-    frame.render_widget(footer_text, chunks[3]);
+    frame.render_widget(footer, chunks[3]);
 }
 
 /// Render the statistics summary panel
@@ -99,8 +103,16 @@ fn render_detail_stats(app: &App, frame: &mut Frame, area: Rect, detail: &Progra
     frame.render_widget(stats_paragraph, stats_inner);
 }
 
-/// Render the time series chart in detail view
+/// Render charts based on detail view mode
 fn render_detail_chart(app: &App, frame: &mut Frame, area: Rect) {
+    match app.detail_view_mode {
+        DetailViewMode::AllCharts => render_all_charts(app, frame, area),
+        DetailViewMode::FullScreen => render_single_chart(app, frame, area),
+    }
+}
+
+/// Render all three charts in a grid layout
+fn render_all_charts(app: &App, frame: &mut Frame, area: Rect) {
     let detail = match &app.cached_program_detail {
         Some(d) => d,
         None => return,
@@ -114,7 +126,47 @@ fn render_detail_chart(app: &App, frame: &mut Frame, area: Rect) {
         return;
     }
 
-    // Render based on current chart type
+    // Split into two rows: top full width, bottom split
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(50), // Top row: TX chart
+            Constraint::Percentage(50), // Bottom row: CU + Success
+        ])
+        .split(area);
+
+    // Top row: Transaction chart (full width)
+    charts::render_tx_chart(app, frame, rows[0], detail);
+
+    // Bottom row: Split into two columns
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(50), // Left: CU chart
+            Constraint::Percentage(50), // Right: Success chart
+        ])
+        .split(rows[1]);
+
+    charts::render_cu_chart(app, frame, columns[0], detail);
+    charts::render_success_chart(app, frame, columns[1], detail);
+}
+
+/// Render a single chart in full-screen mode
+fn render_single_chart(app: &App, frame: &mut Frame, area: Rect) {
+    let detail = match &app.cached_program_detail {
+        Some(d) => d,
+        None => return,
+    };
+
+    if detail.slot_timeline.is_empty() {
+        let placeholder = Paragraph::new("No timeline data available")
+            .style(app.theme.muted_style())
+            .alignment(Alignment::Center);
+        frame.render_widget(placeholder, area);
+        return;
+    }
+
+    // Render the currently selected chart
     match app.current_chart {
         ChartType::Transactions => charts::render_tx_chart(app, frame, area, detail),
         ChartType::ComputeUnits => charts::render_cu_chart(app, frame, area, detail),

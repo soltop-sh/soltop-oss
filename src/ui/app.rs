@@ -3,7 +3,7 @@ use crate::stats::{is_system_program, NetworkState, SlotStats};
 use crate::ui::input;
 use crate::ui::renderer;
 use crate::ui::types::{
-    ChartType, NetworkStatsDisplay, ProgramDetail, ProgramStatsDisplay, ViewMode,
+    ChartType, DetailViewMode, NetworkStatsDisplay, ProgramDetail, ProgramStatsDisplay, ViewMode,
 };
 use anyhow::Result;
 use crossterm::event::{self, Event};
@@ -54,6 +54,9 @@ pub struct App {
 
     /// Current chart type being displayed
     pub current_chart: ChartType,
+
+    /// Detail view display mode
+    pub detail_view_mode: DetailViewMode,
 }
 
 impl App {
@@ -84,6 +87,7 @@ impl App {
             view_mode: ViewMode::Live,
             loading: true,
             current_chart: ChartType::Transactions,
+            detail_view_mode: DetailViewMode::AllCharts,
         }
     }
 

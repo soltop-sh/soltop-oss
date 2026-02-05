@@ -1,5 +1,5 @@
 use super::app::App;
-use super::types::{ChartType, ViewMode};
+use super::types::{ChartType, DetailViewMode, ViewMode};
 use crossterm::event::KeyCode;
 
 /// Handle keyboard input
@@ -10,6 +10,7 @@ pub fn handle_key(app: &mut App, key: KeyCode) {
                 // Return to main view from detail view
                 app.showing_detail = false;
                 app.selected_program_id = None;
+                app.detail_view_mode = DetailViewMode::AllCharts; // Reset to default
             } else {
                 // Quit from main view
                 app.running = false;
@@ -56,12 +57,25 @@ pub fn handle_key(app: &mut App, key: KeyCode) {
 
         KeyCode::Tab => {
             if app.showing_detail {
-                // Cycle through chart types
-                app.current_chart = match app.current_chart {
-                    ChartType::Transactions => ChartType::ComputeUnits,
-                    ChartType::ComputeUnits => ChartType::SuccessRate,
-                    ChartType::SuccessRate => ChartType::Transactions,
-                };
+                match app.detail_view_mode {
+                    DetailViewMode::AllCharts => {
+                        // Switch to full-screen mode, starting with TX chart
+                        app.detail_view_mode = DetailViewMode::FullScreen;
+                        app.current_chart = ChartType::Transactions;
+                    }
+                    DetailViewMode::FullScreen => {
+                        // Cycle through charts in full-screen
+                        app.current_chart = match app.current_chart {
+                            ChartType::Transactions => ChartType::ComputeUnits,
+                            ChartType::ComputeUnits => ChartType::SuccessRate,
+                            ChartType::SuccessRate => {
+                                // After last chart, return to all charts view
+                                app.detail_view_mode = DetailViewMode::AllCharts;
+                                ChartType::Transactions // Reset for next time
+                            }
+                        };
+                    }
+                }
             }
         }
         _ => {}
