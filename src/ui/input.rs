@@ -38,11 +38,13 @@ pub fn handle_key(app: &mut App, key: KeyCode) {
             if !app.showing_detail {
                 let max_row = app.cached_stats.len().saturating_sub(1);
                 app.selected_row = (app.selected_row + 1).min(max_row);
+                app.table_state.select(Some(app.selected_row));
             }
         }
         KeyCode::Up => {
             if !app.showing_detail {
                 app.selected_row = app.selected_row.saturating_sub(1);
+                app.table_state.select(Some(app.selected_row));
             }
         }
 

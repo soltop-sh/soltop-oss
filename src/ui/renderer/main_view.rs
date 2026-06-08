@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 /// Render the main view with table, header, and network overview
-pub fn render_main_view(app: &App, frame: &mut Frame, area: Rect) {
+pub fn render_main_view(app: &mut App, frame: &mut Frame, area: Rect) {
     // Create main layout: header + network overview + table + footer
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -184,7 +184,7 @@ fn render_network_overview(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 /// Render the statistics table
-fn render_table(app: &App, frame: &mut Frame, area: Rect) {
+fn render_table(app: &mut App, frame: &mut Frame, area: Rect) {
     // Table header with neon green
     let header = Row::new(vec![
         Cell::from("Program ID"),
@@ -277,7 +277,7 @@ fn render_table(app: &App, frame: &mut Frame, area: Rect) {
             .title_style(app.theme.header_style()),
     );
 
-    frame.render_widget(table, area);
+    frame.render_stateful_widget(table, area, &mut app.table_state);
 }
 
 /// Render the footer with keyboard shortcuts

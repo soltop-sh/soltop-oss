@@ -6,7 +6,7 @@ use super::app::App;
 use ratatui::Frame;
 
 /// Main render dispatcher - delegates to appropriate view
-pub fn render(app: &App, frame: &mut Frame) {
+pub fn render(app: &mut App, frame: &mut Frame) {
     let area = frame.area();
 
     // Show loading screen if no data yet

@@ -7,7 +7,7 @@ use crate::ui::types::{
 };
 use anyhow::Result;
 use crossterm::event::{self, Event};
-use ratatui::{backend::Backend, Frame, Terminal};
+use ratatui::{backend::Backend, widgets::TableState, Frame, Terminal};
 use std::cmp::Reverse;
 use std::sync::Arc;
 use std::time::Duration;
@@ -57,6 +57,9 @@ pub struct App {
 
     /// Detail view display mode
     pub detail_view_mode: DetailViewMode,
+
+    /// Table state for scrolling the program list
+    pub table_state: TableState,
 }
 
 impl App {
@@ -88,6 +91,7 @@ impl App {
             loading: true,
             current_chart: ChartType::Transactions,
             detail_view_mode: DetailViewMode::AllCharts,
+            table_state: TableState::default().with_selected(0),
         }
     }
 
@@ -158,7 +162,7 @@ impl App {
     }
 
     /// Render the entire UI
-    pub fn render(&self, frame: &mut Frame) {
+    pub fn render(&mut self, frame: &mut Frame) {
         renderer::render(self, frame);
     }
 
