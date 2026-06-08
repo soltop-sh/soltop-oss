@@ -54,28 +54,62 @@ impl NetworkMonitor {
         tx: mpsc::Sender<u64>,
         state: Arc<RwLock<NetworkState>>,
     ) -> Result<()> {
-        let mut current_slot = rpc_client.get_latest_slot().await?;
-
+        // Initial connection with retry
+        let mut current_slot;
+        let mut retry_delay = Duration::from_secs(1);
         loop {
-            // Check where we are
-            let latest_slot = rpc_client.get_latest_slot().await?;
-
-            // Update the latest network slot in state for UI display
-            {
-                let mut state = state.write().await;
-                state.update_latest_network_slot(latest_slot);
-            }
-
-            if current_slot <= latest_slot {
-                // Send slot immediately
-                tx.send(current_slot).await?;
-                current_slot += 1;
-                // No sleep when catching up!
-            } else {
-                // We're ahead, wait a bit
-                tokio::time::sleep(poll_interval).await;
+            match rpc_client.get_latest_slot().await {
+                Ok(slot) => {
+                    current_slot = slot;
+                    let mut s = state.write().await;
+                    s.rpc_error = None;
+                    break;
+                }
+                Err(e) => {
+                    let msg = format!("RPC connection failed: {} — retrying in {}s", e, retry_delay.as_secs());
+                    {
+                        let mut s = state.write().await;
+                        s.rpc_error = Some(msg);
+                    }
+                    tokio::time::sleep(retry_delay).await;
+                    retry_delay = (retry_delay * 2).min(Duration::from_secs(30));
+                }
             }
         }
+
+        let mut consecutive_errors = 0u32;
+        loop {
+            match rpc_client.get_latest_slot().await {
+                Ok(latest_slot) => {
+                    consecutive_errors = 0;
+                    {
+                        let mut s = state.write().await;
+                        s.rpc_error = None;
+                        s.update_latest_network_slot(latest_slot);
+                    }
+
+                    if current_slot <= latest_slot {
+                        if tx.send(current_slot).await.is_err() {
+                            break;
+                        }
+                        current_slot += 1;
+                    } else {
+                        tokio::time::sleep(poll_interval).await;
+                    }
+                }
+                Err(e) => {
+                    consecutive_errors += 1;
+                    let backoff = Duration::from_secs((2u64).pow(consecutive_errors.min(5)));
+                    let msg = format!("RPC error: {} — retry #{} in {}s", e, consecutive_errors, backoff.as_secs());
+                    {
+                        let mut s = state.write().await;
+                        s.rpc_error = Some(msg);
+                    }
+                    tokio::time::sleep(backoff).await;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Consumer task: receive slots from channel and update state

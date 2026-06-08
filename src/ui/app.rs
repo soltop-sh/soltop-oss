@@ -57,6 +57,9 @@ pub struct App {
 
     /// Detail view display mode
     pub detail_view_mode: DetailViewMode,
+
+    /// RPC error message from the monitor (None = healthy)
+    pub rpc_error: Option<String>,
 }
 
 impl App {
@@ -88,11 +91,18 @@ impl App {
             loading: true,
             current_chart: ChartType::Transactions,
             detail_view_mode: DetailViewMode::AllCharts,
+            rpc_error: None,
         }
     }
 
     /// Update cached stats from network state
     async fn update_stats(&mut self) {
+        // Read RPC error state
+        {
+            let state = self.network_state.read().await;
+            self.rpc_error = state.rpc_error.clone();
+        }
+
         let (program_stats, network_stats) = self.get_stats().await;
         self.cached_stats = program_stats;
         self.cached_network_stats = network_stats;
