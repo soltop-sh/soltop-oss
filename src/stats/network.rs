@@ -21,6 +21,9 @@ pub struct NetworkState {
     /// Latest network slot (for lag calculation)
     pub latest_network_slot: u64,
 
+    /// RPC connection error message (None = healthy)
+    pub rpc_error: Option<String>,
+
     /// When we started monitoring
     start_time: Instant,
 
@@ -41,6 +44,7 @@ impl NetworkState {
             programs: HashMap::new(),
             current_slot: 0,
             latest_network_slot: 0,
+            rpc_error: None,
             start_time: Instant::now(),
             window_duration,
             buffer_capacity,

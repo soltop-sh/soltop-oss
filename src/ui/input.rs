@@ -49,7 +49,6 @@ pub fn handle_key(app: &mut App, key: KeyCode) {
                 app.showing_detail = true;
             }
         }
-
         KeyCode::Tab if app.showing_detail => {
             match app.detail_view_mode {
                 DetailViewMode::AllCharts => {

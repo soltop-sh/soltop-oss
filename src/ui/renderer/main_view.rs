@@ -53,7 +53,7 @@ pub fn render_loading_screen(app: &App, frame: &mut Frame, area: Rect) {
     let content_area = horizontal_chunks[1];
 
     // ASCII logo
-    let logo = vec![
+    let mut logo = vec![
         "                  ████   █████                      ",
         "                 ░░███  ░░███                       ",
         "  █████   ██████  ░███  ███████    ██████  ████████ ",
@@ -69,10 +69,30 @@ pub fn render_loading_screen(app: &App, frame: &mut Frame, area: Rect) {
         "              Loading Solana network data...",
     ];
 
+    // Show RPC error below the logo if present
+    if app.rpc_error.is_some() {
+        logo.push("");
+        logo.push("");
+    }
+
     let logo_text = Paragraph::new(logo.join("\n"))
-        .style(app.theme.normal_style()) // White instead of green
+        .style(app.theme.normal_style())
         .alignment(Alignment::Center);
     frame.render_widget(logo_text, content_area);
+
+    // Render error message below if present
+    if let Some(ref err) = app.rpc_error {
+        let err_area = ratatui::layout::Rect {
+            x: content_area.x,
+            y: content_area.y + content_area.height.saturating_sub(2),
+            width: content_area.width,
+            height: 2,
+        };
+        let err_text = Paragraph::new(err.as_str())
+            .style(Style::default().fg(ratatui::style::Color::Red))
+            .alignment(Alignment::Center);
+        frame.render_widget(err_text, err_area);
+    }
 }
 
 /// Render the header section
@@ -120,6 +140,9 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
 
     // Add mode indicators
     let mut indicators = Vec::new();
+    if app.rpc_error.is_some() {
+        indicators.push("[RPC ERROR]");
+    }
     if app.truncate_ids {
         indicators.push("[TRUNCATED]");
     }
