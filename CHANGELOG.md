@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - htop-style "Network" meters panel replacing the plain text overview: TPS, CU/s, Success, and Lag rendered as bracketed gauge bars (2×2) with the brand green→amber→red gradient.
 - Sortable program table: press `s` to cycle the sort column (Txs/s → CU/s → Avg CU → Total → Success%); the active column is marked with a ▼ and rendered reversed.
-- Theme picker: press `T` (or F2) to open an overlay and switch themes live with ↑/↓. Presets: **Flatline** (neon green), **Matrix** (deep green), **Mono** (grayscale), **Amber** (retro CRT).
+- Theme picker: press `T` (or F2) to open an overlay and switch themes live with ↑/↓. Each preset has its own background. Presets: **Flatline** (neon green on black), **Matrix** (green on dark green), **Mono** (grayscale), **Amber** (retro CRT on brown), **Blue** (Windows/PowerShell light-on-navy).
 - Regression test verifying the program statistics table scrolls to keep the selected row visible when navigating past the visible area.
 
 ## [0.1.0] - 2025-12-29

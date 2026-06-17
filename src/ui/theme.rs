@@ -34,61 +34,78 @@ impl Theme {
         }
     }
 
-    /// Deep-green phosphor / "Matrix" look.
+    /// Deep-green phosphor / "Matrix" look on a dark-green background.
     pub const fn matrix() -> Self {
         Self {
             name: "Matrix",
-            background: Color::Rgb(0, 8, 0),
-            border: Color::Rgb(0, 60, 0),
+            background: Color::Rgb(0, 18, 4),
+            border: Color::Rgb(0, 70, 20),
             neon_green: Color::Rgb(0, 255, 65),
             cyan: Color::Rgb(0, 220, 120),
             amber: Color::Rgb(150, 255, 0),
             success: Color::Rgb(0, 255, 65),
             error: Color::Rgb(255, 80, 80),
             white: Color::Rgb(190, 255, 190),
-            gray: Color::Rgb(0, 140, 0),
+            gray: Color::Rgb(0, 150, 40),
         }
     }
 
-    /// Grayscale / monochrome.
+    /// Grayscale / monochrome on a neutral dark-gray background.
     pub const fn mono() -> Self {
         Self {
             name: "Mono",
-            background: Color::Rgb(8, 8, 8),
-            border: Color::Rgb(70, 70, 70),
+            background: Color::Rgb(24, 24, 24),
+            border: Color::Rgb(80, 80, 80),
             neon_green: Color::Rgb(235, 235, 235),
             cyan: Color::Rgb(200, 200, 200),
             amber: Color::Rgb(170, 170, 170),
             success: Color::Rgb(230, 230, 230),
             error: Color::Rgb(255, 120, 120),
             white: Color::Rgb(255, 255, 255),
-            gray: Color::Rgb(130, 130, 130),
+            gray: Color::Rgb(140, 140, 140),
         }
     }
 
-    /// Retro amber CRT.
+    /// Retro amber CRT on a warm dark-brown background.
     pub const fn amber_crt() -> Self {
         Self {
             name: "Amber",
-            background: Color::Rgb(12, 7, 0),
-            border: Color::Rgb(90, 55, 0),
+            background: Color::Rgb(26, 14, 0),
+            border: Color::Rgb(110, 70, 0),
             neon_green: Color::Rgb(255, 176, 0),
             cyan: Color::Rgb(255, 214, 90),
             amber: Color::Rgb(255, 176, 0),
             success: Color::Rgb(255, 200, 60),
             error: Color::Rgb(255, 90, 40),
             white: Color::Rgb(255, 232, 176),
-            gray: Color::Rgb(150, 100, 30),
+            gray: Color::Rgb(170, 115, 35),
+        }
+    }
+
+    /// Classic Windows console / PowerShell — light text on navy blue.
+    pub const fn blue() -> Self {
+        Self {
+            name: "Blue",
+            background: Color::Rgb(1, 36, 86), // PowerShell navy (#012456)
+            border: Color::Rgb(70, 110, 160),
+            neon_green: Color::Rgb(230, 232, 240), // light chrome (title/header bars)
+            cyan: Color::Rgb(86, 170, 255),        // selection
+            amber: Color::Rgb(255, 214, 90),
+            success: Color::Rgb(120, 220, 150),
+            error: Color::Rgb(255, 110, 110),
+            white: Color::Rgb(240, 242, 248),
+            gray: Color::Rgb(160, 175, 205),
         }
     }
 
     /// All selectable presets, in menu order.
-    pub fn presets() -> [Theme; 4] {
+    pub fn presets() -> [Theme; 5] {
         [
             Self::flatline(),
             Self::matrix(),
             Self::mono(),
             Self::amber_crt(),
+            Self::blue(),
         ]
     }
 
