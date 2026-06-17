@@ -59,18 +59,21 @@ pub fn meter_line(
                 val[i - val_start].to_string(),
                 Style::default()
                     .fg(theme.white)
+                    .bg(theme.background)
                     .add_modifier(Modifier::BOLD),
             ));
         } else if i < filled {
             cells.push(Span::styled(
                 "|".to_string(),
-                Style::default().fg(gradient_color(i as f64 / bar_w as f64)),
+                Style::default()
+                    .fg(gradient_color(i as f64 / bar_w as f64))
+                    .bg(theme.background),
             ));
         } else {
             // Dim empty track.
             cells.push(Span::styled(
                 " ".to_string(),
-                Style::default().fg(theme.border),
+                Style::default().fg(theme.border).bg(theme.background),
             ));
         }
     }

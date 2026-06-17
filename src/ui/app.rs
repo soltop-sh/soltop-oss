@@ -67,6 +67,12 @@ pub struct App {
 
     /// Column the program table is sorted by (cycle with 's')
     pub sort_column: SortColumn,
+
+    /// Index into Theme::presets() of the active theme
+    pub theme_index: usize,
+
+    /// Whether the theme picker overlay is open (toggle with 'T')
+    pub show_theme_menu: bool,
 }
 
 impl App {
@@ -101,6 +107,8 @@ impl App {
             table_state: TableState::default().with_selected(0),
             rpc_error: None,
             sort_column: SortColumn::Total,
+            theme_index: 0,
+            show_theme_menu: false,
         }
     }
 

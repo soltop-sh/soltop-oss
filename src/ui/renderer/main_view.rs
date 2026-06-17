@@ -24,7 +24,7 @@ pub fn render_main_view(app: &mut App, frame: &mut Frame, area: Rect) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(5), // Header (slot + status)
-            Constraint::Length(8), // Meters: per-program core bars + aggregate gauges
+            Constraint::Length(4), // Meters: aggregate gauges (2×2)
             Constraint::Min(6),    // Table (takes remaining space)
             Constraint::Length(1), // Footer
         ])
@@ -183,8 +183,8 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(stats_text, info_chunks[1]);
 }
 
-/// Render the meters region: top-N programs as htop-style "core" bars on the
-/// left, aggregate network gauges on the right.
+/// Render the meters region: aggregate network gauges (TPS, CU/s, Success, Lag)
+/// laid out 2×2 as htop-style bars filling the panel width.
 fn render_meters(app: &App, frame: &mut Frame, area: Rect) {
     let block = Block::default()
         .title(" Network ")
@@ -194,71 +194,28 @@ fn render_meters(app: &App, frame: &mut Frame, area: Rect) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
-        .split(inner);
-
-    render_core_bars(app, frame, cols[0]);
-    render_aggregate_gauges(app, frame, cols[1]);
-}
-
-/// Left column: the busiest programs as per-"core" CU bars, like htop's CPUs.
-/// Each bar's fill is relative to the busiest program shown, so the leader is
-/// always full and the rest read as a share of it.
-fn render_core_bars(app: &App, frame: &mut Frame, area: Rect) {
-    let rows = area.height as usize;
-    if rows == 0 || area.width < 12 {
+    if inner.width < 12 || inner.height == 0 {
         return;
     }
 
-    let stats = app.get_cached_stats();
-    let top: Vec<_> = stats.iter().take(rows).collect();
-    let max_cu = top.first().map(|s| s.cu_per_sec).unwrap_or(0.0).max(1.0);
-
-    let label_w = 9usize; // truncated program id
-    let bar_w = (area.width as usize).saturating_sub(label_w + 4).max(6);
-
-    let lines: Vec<Line> = top
-        .iter()
-        .map(|s| {
-            let label = if s.program_id.len() > label_w {
-                format!("{}…", &s.program_id[..label_w - 1])
-            } else {
-                s.program_id.clone()
-            };
-            meter_line(
-                &label,
-                s.cu_per_sec / max_cu,
-                &format_cu(s.cu_per_sec),
-                label_w,
-                bar_w,
-                &app.theme,
-            )
-        })
-        .collect();
-
-    frame.render_widget(Paragraph::new(lines), area);
-}
-
-/// Right column: aggregate network gauges (TPS, CU/s, Success, Lag).
-fn render_aggregate_gauges(app: &App, frame: &mut Frame, area: Rect) {
-    if area.height == 0 || area.width < 12 {
-        return;
-    }
     let stats = &app.cached_network_stats;
     let lag = stats.latest_network_slot.saturating_sub(stats.current_slot);
 
     let label_w = 8usize;
-    let bar_w = (area.width as usize).saturating_sub(label_w + 4).max(6);
+    // Two side-by-side columns, two gauges each.
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(inner);
+    let bar_w = |w: u16| (w as usize).saturating_sub(label_w + 4).max(6);
 
-    let lines = vec![
+    let left = vec![
         meter_line(
             "TPS",
             stats.total_tps / TPS_FULL,
             &format!("{:.0}", stats.total_tps),
             label_w,
-            bar_w,
+            bar_w(cols[0].width),
             &app.theme,
         ),
         meter_line(
@@ -266,15 +223,17 @@ fn render_aggregate_gauges(app: &App, frame: &mut Frame, area: Rect) {
             stats.total_cu_per_sec / CU_FULL,
             &format_cu(stats.total_cu_per_sec),
             label_w,
-            bar_w,
+            bar_w(cols[0].width),
             &app.theme,
         ),
+    ];
+    let right = vec![
         meter_line(
             "Success",
             stats.avg_success_rate / 100.0,
             &format!("{:.1}%", stats.avg_success_rate),
             label_w,
-            bar_w,
+            bar_w(cols[1].width),
             &app.theme,
         ),
         meter_line(
@@ -282,12 +241,61 @@ fn render_aggregate_gauges(app: &App, frame: &mut Frame, area: Rect) {
             lag as f64 / LAG_FULL,
             &format!("{lag} sl"),
             label_w,
-            bar_w,
+            bar_w(cols[1].width),
             &app.theme,
         ),
     ];
 
-    frame.render_widget(Paragraph::new(lines), area);
+    frame.render_widget(Paragraph::new(left), cols[0]);
+    frame.render_widget(Paragraph::new(right), cols[1]);
+}
+
+/// Render the theme picker overlay (toggle with 'T'). Lists presets and
+/// highlights the active one; ↑/↓ switch live, Enter/Esc close.
+pub(super) fn render_theme_menu(app: &App, frame: &mut Frame, area: Rect) {
+    use ratatui::widgets::Clear;
+
+    let names: Vec<&'static str> = crate::ui::theme::Theme::presets()
+        .iter()
+        .map(|t| t.name)
+        .collect();
+
+    // Centered popup.
+    let w: u16 = 28;
+    let h: u16 = names.len() as u16 + 2;
+    let x = area.x + (area.width.saturating_sub(w)) / 2;
+    let y = area.y + (area.height.saturating_sub(h)) / 2;
+    let popup = Rect {
+        x,
+        y,
+        width: w.min(area.width),
+        height: h.min(area.height),
+    };
+
+    let block = Block::default()
+        .title(" Theme (↑/↓, Enter) ")
+        .borders(Borders::ALL)
+        .border_style(app.theme.header_style())
+        .title_style(app.theme.header_style());
+    let inner = block.inner(popup);
+
+    let lines: Vec<Line> = names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let marker = if i == app.theme_index { "› " } else { "  " };
+            let style = if i == app.theme_index {
+                app.theme.selection_style()
+            } else {
+                app.theme.normal_style()
+            };
+            Line::from(Span::styled(format!("{marker}{name}"), style))
+        })
+        .collect();
+
+    frame.render_widget(Clear, popup);
+    frame.render_widget(block, popup);
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// Render the statistics table
@@ -318,16 +326,17 @@ fn render_table(app: &mut App, frame: &mut Frame, area: Rect) {
     .style(app.theme.table_header_style())
     .height(1);
 
-    // Convert cached stats to color-coded rows
+    // Convert cached stats to color-coded rows. Cells carry the theme bg so the
+    // themed background fills the whole table; the selected row is highlighted
+    // full-width by the table's row_highlight_style (htop-style), not per-cell.
+    let bg = app.theme.background;
+    let cell = |text: String, fg: ratatui::style::Color| {
+        Cell::from(text).style(Style::default().fg(fg).bg(bg))
+    };
     let rows: Vec<Row> = app
         .get_cached_stats()
         .iter()
-        .enumerate()
-        .map(|(index, stat)| {
-            // Determine if this row is selected
-            let is_selected = index == app.selected_row && !app.showing_detail;
-
-            // Color code based on metrics
+        .map(|stat| {
             let tps_color = app.theme.tps_color(stat.tx_per_sec);
             let success_color = app.theme.success_rate_color(stat.success_rate);
             let cu_per_sec_color = app.theme.cu_per_sec_color(stat.cu_per_sec);
@@ -340,35 +349,16 @@ fn render_table(app: &mut App, frame: &mut Frame, area: Rect) {
                 stat.program_id.clone()
             };
 
-            // Apply selection highlighting
-            let row_style = if is_selected {
-                Style::default()
-                    .bg(app.theme.border) // Background highlight
-                    .fg(app.theme.neon_green) // Text color
-            } else {
-                Style::default()
-            };
-
             Row::new(vec![
-                // Program ID (full or truncated based on toggle)
-                Cell::from(program_display).style(Style::default().fg(app.theme.gray)),
-                // TPS (color coded: green=low, amber=medium, red=high)
-                Cell::from(format!("{:.1}", stat.tx_per_sec)).style(Style::default().fg(tps_color)),
-                // CU/s (color coded based on compute intensity)
-                Cell::from(format_cu(stat.cu_per_sec)).style(Style::default().fg(cu_per_sec_color)),
-                // Avg CU (color coded based on efficiency)
-                Cell::from(format_cu(stat.avg_cu)).style(Style::default().fg(avg_cu_color)),
-                // Min CU
-                Cell::from(format_cu(stat.min_cu as f64)).style(app.theme.normal_style()),
-                // Max CU
-                Cell::from(format_cu(stat.max_cu as f64)).style(app.theme.normal_style()),
-                // Total (normal white)
-                Cell::from(format!("{}", stat.total_txs)).style(app.theme.normal_style()),
-                // Success% (color coded: green>95%, amber>80%, red<80%)
-                Cell::from(format!("{:.1}%", stat.success_rate))
-                    .style(Style::default().fg(success_color)),
+                cell(program_display, app.theme.gray),
+                cell(format!("{:.1}", stat.tx_per_sec), tps_color),
+                cell(format_cu(stat.cu_per_sec), cu_per_sec_color),
+                cell(format_cu(stat.avg_cu), avg_cu_color),
+                cell(format_cu(stat.min_cu as f64), app.theme.white),
+                cell(format_cu(stat.max_cu as f64), app.theme.white),
+                cell(format!("{}", stat.total_txs), app.theme.white),
+                cell(format!("{:.1}%", stat.success_rate), success_color),
             ])
-            .style(row_style)
         })
         .collect();
 
@@ -388,6 +378,7 @@ fn render_table(app: &mut App, frame: &mut Frame, area: Rect) {
         ],
     )
     .header(header)
+    .row_highlight_style(app.theme.selection_style())
     .block(
         Block::default()
             .borders(Borders::ALL)
@@ -411,9 +402,10 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
             ("↑/↓", "Navigate"),
             ("ENTER", "Details"),
             ("s", "Sort"),
-            ("t", "Toggle IDs"),
-            ("u", "Filter System"),
-            ("w", "Window View"),
+            ("T", "Theme"),
+            ("t", "IDs"),
+            ("u", "Filter"),
+            ("w", "Window"),
             ("q", "Quit"),
         ]
     };
@@ -496,16 +488,40 @@ mod scroll_tests {
     }
 
     #[test]
-    fn meters_show_top_program_and_gauges() {
+    fn meters_show_aggregate_gauges() {
         let mut app = app_with_n(30, 0);
-        // give the leader a distinctive id we can find in the core bars
-        app.cached_stats[0].program_id = "LEADERxx".to_string();
-        app.cached_stats[0].cu_per_sec = 99_000_000.0;
         app.cached_network_stats.total_tps = 1234.0;
         let content = render_to_string(&mut app, 110, 24);
-        assert!(content.contains("LEADER"), "core bar for leader missing");
+        // All four aggregate gauges should be present in the Network panel.
         assert!(content.contains("TPS"), "TPS gauge missing");
+        assert!(content.contains("CU/s"), "CU/s gauge missing");
         assert!(content.contains("Success"), "Success gauge missing");
+        assert!(content.contains("Lag"), "Lag gauge missing");
+    }
+
+    #[test]
+    fn theme_menu_lists_presets_when_open() {
+        let mut app = app_with_n(5, 0);
+        app.show_theme_menu = true;
+        let content = render_to_string(&mut app, 110, 24);
+        // render_to_string only draws main_view; exercise the overlay directly.
+        let backend = TestBackend::new(110, 24);
+        let mut term = Terminal::new(backend).unwrap();
+        term.draw(|f| {
+            render_main_view(&mut app, f, f.area());
+            render_theme_menu(&app, f, f.area());
+        })
+        .unwrap();
+        let overlay: String = term
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(overlay.contains("Flatline"), "preset list missing");
+        assert!(overlay.contains("Matrix"));
+        let _ = content; // (kept to ensure main view renders with menu flag set)
     }
 
     #[test]

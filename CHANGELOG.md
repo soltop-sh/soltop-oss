@@ -13,12 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The `[RPC ERROR]` header indicator is now rendered in red + bold so it stands out against the muted status line.
+- The whole screen is now painted with the active theme's background, so the terminal's own background never shows through.
+- Selected table row is highlighted with a full-width bar (htop-style) instead of a per-cell background.
 
 ### Added
-- htop-style meters region replacing the plain "Network Overview" text panel:
-  - **Aggregate gauges** (TPS, CU/s, Success, Lag) rendered as bracketed bars with the brand green→amber→red gradient.
-  - **Per-program "core" bars** — the busiest programs by CU/s shown as individual gauge bars (like htop's per-CPU meters), each relative to the leader.
+- htop-style "Network" meters panel replacing the plain text overview: TPS, CU/s, Success, and Lag rendered as bracketed gauge bars (2×2) with the brand green→amber→red gradient.
 - Sortable program table: press `s` to cycle the sort column (Txs/s → CU/s → Avg CU → Total → Success%); the active column is marked with a ▼ and rendered reversed.
+- Theme picker: press `T` (or F2) to open an overlay and switch themes live with ↑/↓. Presets: **Flatline** (neon green), **Matrix** (deep green), **Mono** (grayscale), **Amber** (retro CRT).
 - Regression test verifying the program statistics table scrolls to keep the selected row visible when navigating past the visible area.
 
 ## [0.1.0] - 2025-12-29
