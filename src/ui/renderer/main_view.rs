@@ -17,24 +17,31 @@ const TPS_FULL: f64 = 5_000.0;
 const CU_FULL: f64 = 150_000_000.0; // 150M CU/s
 const LAG_FULL: f64 = 10.0; // slots behind = "full"
 
-/// Render the main view with table, header, meters, and footer
+/// Render the main view: borderless, htop-style — inverted title bar, info
+/// lines, gauge meters, inverted column header, rows, inverted footer.
 pub fn render_main_view(app: &mut App, frame: &mut Frame, area: Rect) {
-    // Create main layout: header + meters + table + footer
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5), // Header (slot + status)
-            Constraint::Length(4), // Meters: aggregate gauges (2×2)
-            Constraint::Min(6),    // Table (takes remaining space)
-            Constraint::Length(1), // Footer
+            Constraint::Length(1), // Title bar (inverted)
+            Constraint::Length(2), // Info: slot + status
+            Constraint::Length(2), // Meters: aggregate gauges (2×2)
+            Constraint::Length(1), // Spacer
+            Constraint::Min(4),    // Table (inverted header + rows)
+            Constraint::Length(1), // Footer (inverted)
         ])
         .split(area);
 
-    // Render sections
-    render_header(app, frame, chunks[0]);
-    render_meters(app, frame, chunks[1]);
-    render_table(app, frame, chunks[2]);
-    render_footer(app, frame, chunks[3]);
+    render_title_bar(app, frame, chunks[0]);
+    render_info(app, frame, chunks[1]);
+    render_meters(app, frame, chunks[2]);
+    render_table(app, frame, chunks[4]);
+    render_footer(app, frame, chunks[5]);
+}
+
+/// Full-width inverted bar helper (title / footer chrome).
+fn inverted_bar(spans: Vec<Span>, style: Style) -> Paragraph {
+    Paragraph::new(Line::from(spans)).style(style)
 }
 
 /// Render the loading screen with logo
@@ -103,47 +110,38 @@ pub fn render_loading_screen(app: &App, frame: &mut Frame, area: Rect) {
     }
 }
 
-/// Render the header section
-fn render_header(app: &App, frame: &mut Frame, area: Rect) {
+/// Full-width inverted title bar (window-titlebar style).
+fn render_title_bar(app: &App, frame: &mut Frame, area: Rect) {
+    let bar = inverted_bar(
+        vec![Span::raw(" soltop — Solana Table of Programs")],
+        app.theme.inverted_style(),
+    );
+    frame.render_widget(bar, area);
+}
+
+/// Two info lines: slot/network on the first, uptime/window/programs (plus
+/// status indicators) on the second.
+fn render_info(app: &App, frame: &mut Frame, area: Rect) {
     let stats = &app.cached_network_stats;
-
-    // Create header with neon green border
-    let header_block = Block::default()
-        .title(" soltop - Solana Table of Programs ")
-        .borders(Borders::ALL)
-        .border_style(app.theme.border_style())
-        .title_style(app.theme.header_style());
-
-    let inner = header_block.inner(area);
-    frame.render_widget(header_block, area);
-
-    // Split inner area into 3 lines (no logo in header anymore)
-    let info_chunks = Layout::default()
+    let lines = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // Line 1: Slot
-            Constraint::Length(1), // Line 2: Stats with mode indicators
-            Constraint::Length(1), // Line 3: Spacer
-        ])
-        .split(inner);
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(area);
 
-    // Line 1: Current slot with network lag
+    // Line 1: current slot with network lag
     let lag = stats.latest_network_slot.saturating_sub(stats.current_slot);
-
     let slot_text = Paragraph::new(format!(
-        "Slot: {} │ Network: {} ({} behind)",
+        " Slot: {} │ Network: {} ({} behind)",
         format_large_number(stats.current_slot),
         format_large_number(stats.latest_network_slot),
         lag
     ))
     .style(app.theme.normal_style());
-    frame.render_widget(slot_text, info_chunks[0]);
+    frame.render_widget(slot_text, lines[0]);
 
-    // Line 2: Uptime, Window, Programs with mode indicators.
-    // Built from spans so the [RPC ERROR] indicator can stand out in red while
-    // the rest of the line stays muted.
+    // Line 2: uptime / window / programs, with status indicators.
     let base = format!(
-        "Uptime: {} │ Window: {} │ Programs: {}",
+        " Uptime: {} │ Window: {} │ Programs: {}",
         format_duration(stats.uptime),
         format_duration(stats.window_duration),
         stats.program_count
@@ -156,12 +154,12 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
         spans.push(Span::styled(
             "[RPC ERROR]",
             Style::default()
-                .fg(ratatui::style::Color::Red)
-                .add_modifier(ratatui::style::Modifier::BOLD),
+                .fg(app.theme.error)
+                .bg(app.theme.background)
+                .add_modifier(Modifier::BOLD),
         ));
     }
 
-    // Remaining mode indicators stay muted.
     let mut indicators = Vec::new();
     if app.truncate_ids {
         indicators.push("[TRUNCATED]");
@@ -179,21 +177,19 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
         ));
     }
 
-    let stats_text = Paragraph::new(Line::from(spans));
-    frame.render_widget(stats_text, info_chunks[1]);
+    frame.render_widget(Paragraph::new(Line::from(spans)), lines[1]);
 }
 
 /// Render the meters region: aggregate network gauges (TPS, CU/s, Success, Lag)
 /// laid out 2×2 as htop-style bars filling the panel width.
 fn render_meters(app: &App, frame: &mut Frame, area: Rect) {
-    let block = Block::default()
-        .title(" Network ")
-        .borders(Borders::ALL)
-        .border_style(app.theme.border_style())
-        .title_style(app.theme.header_style());
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
+    // Borderless: pad in by one column so bars don't hug the edge.
+    let inner = Rect {
+        x: area.x + 1,
+        y: area.y,
+        width: area.width.saturating_sub(2),
+        height: area.height,
+    };
     if inner.width < 12 || inner.height == 0 {
         return;
     }
@@ -298,16 +294,29 @@ pub(super) fn render_theme_menu(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(lines), inner);
 }
 
-/// Render the statistics table
+/// Render the statistics table (borderless, with a full-width inverted header).
 fn render_table(app: &mut App, frame: &mut Frame, area: Rect) {
-    // Table header with neon green. The active sort column gets a ▼ marker and
-    // is rendered reversed so it stands out (htop-style).
+    // Pre-paint the header row so the whole bar (including inter-column gaps)
+    // is inverted green; the table's header cells render on top seamlessly.
+    let header_rect = Rect {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height: 1,
+    };
+    frame.render_widget(
+        Block::default().style(app.theme.inverted_style()),
+        header_rect,
+    );
+
+    // Header cells inherit the inverted row style; the active sort column gets a
+    // ▼ marker and underline so it stands out on the green bar.
     let head_cell = |label: &str, col: Option<SortColumn>| -> Cell {
         if col == Some(app.sort_column) {
             Cell::from(format!("{label} ▼")).style(
-                Style::default()
-                    .fg(app.theme.neon_green)
-                    .add_modifier(Modifier::REVERSED | Modifier::BOLD),
+                app.theme
+                    .inverted_style()
+                    .add_modifier(Modifier::UNDERLINED),
             )
         } else {
             Cell::from(label.to_string())
@@ -323,7 +332,7 @@ fn render_table(app: &mut App, frame: &mut Frame, area: Rect) {
         head_cell("Total", Some(SortColumn::Total)),
         head_cell("Success%", Some(SortColumn::SuccessRate)),
     ])
-    .style(app.theme.table_header_style())
+    .style(app.theme.inverted_style())
     .height(1);
 
     // Convert cached stats to color-coded rows. Cells carry the theme bg so the
@@ -378,14 +387,7 @@ fn render_table(app: &mut App, frame: &mut Frame, area: Rect) {
         ],
     )
     .header(header)
-    .row_highlight_style(app.theme.selection_style())
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(app.theme.border_style())
-            .title(" Program Statistics ")
-            .title_style(app.theme.header_style()),
-    );
+    .row_highlight_style(app.theme.selection_style());
 
     frame.render_stateful_widget(table, area, &mut app.table_state);
 }
@@ -410,19 +412,23 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         ]
     };
 
+    // htop-style chips: bright key + inverted-green label, on the theme bg.
+    let key_style = Style::default()
+        .fg(app.theme.neon_green)
+        .bg(app.theme.background)
+        .add_modifier(Modifier::BOLD);
     let spans: Vec<Span> = footer_text
         .iter()
         .flat_map(|(key, label)| {
             vec![
-                Span::styled(*key, app.theme.success_style()), // Green key
-                Span::raw(format!("{} ", label)),              // White label
-                Span::raw(" "),
+                Span::styled(*key, key_style),
+                Span::styled(*label, app.theme.inverted_style()),
+                Span::styled(" ", Style::default().bg(app.theme.background)),
             ]
         })
         .collect();
 
     let footer = Paragraph::new(Line::from(spans)).style(Style::default().bg(app.theme.background));
-
     frame.render_widget(footer, area);
 }
 

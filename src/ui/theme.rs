@@ -139,6 +139,15 @@ impl Theme {
             .add_modifier(Modifier::BOLD)
     }
 
+    /// Inverted "chrome" bar (title, table header, footer): green background,
+    /// dark text. Distinct from the cyan selection so the active row stands out.
+    pub fn inverted_style(&self) -> Style {
+        Style::default()
+            .bg(self.neon_green)
+            .fg(self.background)
+            .add_modifier(Modifier::BOLD)
+    }
+
     // Get color based on success rate percentage
     pub fn success_rate_color(&self, rate: f64) -> Color {
         if rate >= 95.0 {

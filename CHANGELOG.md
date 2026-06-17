@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `println!`/`eprintln!` calls in the slot monitor that wrote to the same terminal ratatui draws on, corrupting the TUI (e.g. a stray "Consumer shutting down" line). Fatal producer/consumer errors now surface via the on-screen RPC error indicator instead.
 
 ### Changed
+- Borderless, htop-style layout: dropped the box borders around all panels in favor of full-width inverted bars — an inverted title bar, an inverted column header, and an inverted Fn-key footer (green chrome), with the cyan selection bar marking the active row.
 - The `[RPC ERROR]` header indicator is now rendered in red + bold so it stands out against the muted status line.
 - The whole screen is now painted with the active theme's background, so the terminal's own background never shows through.
 - Selected table row is highlighted with a full-width bar (htop-style) instead of a per-cell background.
