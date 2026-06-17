@@ -49,24 +49,22 @@ pub fn handle_key(app: &mut App, key: KeyCode) {
                 app.showing_detail = true;
             }
         }
-        KeyCode::Tab if app.showing_detail => {
-            match app.detail_view_mode {
-                DetailViewMode::AllCharts => {
-                    app.detail_view_mode = DetailViewMode::FullScreen;
-                    app.current_chart = ChartType::Transactions;
-                }
-                DetailViewMode::FullScreen => {
-                    app.current_chart = match app.current_chart {
-                        ChartType::Transactions => ChartType::ComputeUnits,
-                        ChartType::ComputeUnits => ChartType::SuccessRate,
-                        ChartType::SuccessRate => {
-                            app.detail_view_mode = DetailViewMode::AllCharts;
-                            ChartType::Transactions
-                        }
-                    };
-                }
+        KeyCode::Tab if app.showing_detail => match app.detail_view_mode {
+            DetailViewMode::AllCharts => {
+                app.detail_view_mode = DetailViewMode::FullScreen;
+                app.current_chart = ChartType::Transactions;
             }
-        }
+            DetailViewMode::FullScreen => {
+                app.current_chart = match app.current_chart {
+                    ChartType::Transactions => ChartType::ComputeUnits,
+                    ChartType::ComputeUnits => ChartType::SuccessRate,
+                    ChartType::SuccessRate => {
+                        app.detail_view_mode = DetailViewMode::AllCharts;
+                        ChartType::Transactions
+                    }
+                };
+            }
+        },
         _ => {}
     }
 }

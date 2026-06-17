@@ -66,7 +66,10 @@ impl NetworkMonitor {
                     break;
                 }
                 Err(e) => {
-                    let msg = format!("RPC connection failed: {} — retrying in {}s", e, retry_delay.as_secs());
+                    let msg = format!(
+                        "RPC connection failed: {e} — retrying in {}s",
+                        retry_delay.as_secs()
+                    );
                     {
                         let mut s = state.write().await;
                         s.rpc_error = Some(msg);
@@ -100,7 +103,10 @@ impl NetworkMonitor {
                 Err(e) => {
                     consecutive_errors += 1;
                     let backoff = Duration::from_secs((2u64).pow(consecutive_errors.min(5)));
-                    let msg = format!("RPC error: {} — retry #{} in {}s", e, consecutive_errors, backoff.as_secs());
+                    let msg = format!(
+                        "RPC error: {e} — retry #{consecutive_errors} in {}s",
+                        backoff.as_secs()
+                    );
                     {
                         let mut s = state.write().await;
                         s.rpc_error = Some(msg);
