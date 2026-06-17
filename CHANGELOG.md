@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Borderless, htop-style layout: dropped the box borders around all panels in favor of full-width inverted bars — an inverted title bar, an inverted column header, and an inverted Fn-key footer (green chrome), with the cyan selection bar marking the active row.
+- Program detail page restyled to match: inverted title bar (`Program · <id>`), a Success gauge reusing the meter component, compact key/value stats, and the three timeseries as borderless braille line graphs under inverted mini-header bars (`Transactions` / `Compute Units` / `Success Rate`).
 - The `[RPC ERROR]` header indicator is now rendered in red + bold so it stands out against the muted status line.
 - The whole screen is now painted with the active theme's background, so the terminal's own background never shows through.
 - Selected table row is highlighted with a full-width bar (htop-style) instead of a per-cell background.
