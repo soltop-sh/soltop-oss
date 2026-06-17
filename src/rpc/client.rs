@@ -1,8 +1,17 @@
 use anyhow::{Context, Result};
 use reqwest;
 use serde_json::json;
+use std::time::Duration;
 
 use super::types::{BlockResponse, SlotResponse};
+
+/// Fail fast if the host can't be reached — without this, an unreachable or
+/// silently-dropping endpoint makes `.send()` hang indefinitely, which stalls
+/// the monitor before its retry/error-surfacing logic ever runs.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// Overall per-request budget. Generous enough for large `getBlock` responses,
+/// short enough that a wedged connection turns into a visible error.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Client for interacting with Solana RPC endpoints
 pub struct RpcClient {
@@ -13,10 +22,15 @@ pub struct RpcClient {
 impl RpcClient {
     /// Create a new RPC client
     pub fn new(url: String) -> Self {
-        Self {
-            url,
-            client: reqwest::Client::new(),
-        }
+        let client = reqwest::Client::builder()
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(REQUEST_TIMEOUT)
+            .build()
+            // builder() only fails if the TLS backend can't initialize; fall
+            // back to a default client so construction stays infallible.
+            .unwrap_or_else(|_| reqwest::Client::new());
+
+        Self { url, client }
     }
 
     /// Fetch the latest slot number

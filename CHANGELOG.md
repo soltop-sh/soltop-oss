@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- RPC client now enforces a 5s connect timeout and 15s request timeout. An unreachable or silently-dropping `--rpc-url` previously hung the monitor indefinitely before any error could be shown; it now surfaces as a visible RPC error on the loading screen.
+- Removed `println!`/`eprintln!` calls in the slot monitor that wrote to the same terminal ratatui draws on, corrupting the TUI (e.g. a stray "Consumer shutting down" line). Fatal producer/consumer errors now surface via the on-screen RPC error indicator instead.
+
+### Added
+- Regression test verifying the program statistics table scrolls to keep the selected row visible when navigating past the visible area.
+
 ## [0.1.0] - 2025-12-29
 
 ### Added

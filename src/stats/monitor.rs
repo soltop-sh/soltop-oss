@@ -139,14 +139,16 @@ impl NetworkMonitor {
                 Ok(_) => {
                     // Block skipped or no data
                 }
-                Err(e) => {
-                    // Network error - log but continue
-                    eprintln!("Error fetching slot {}: {}", slot, e);
+                Err(_e) => {
+                    // Transient block-fetch error. Don't print — stdout/stderr
+                    // is the same terminal ratatui is drawing on, so any print
+                    // corrupts the TUI. Overall RPC health is already surfaced
+                    // via NetworkState.rpc_error by the producer.
                 }
             }
         }
 
-        println!("Consumer shutting down (channel closed)");
+        // Channel closed → producer gone. Nothing to print (would corrupt the TUI).
         Ok(())
     }
 
@@ -164,19 +166,28 @@ impl NetworkMonitor {
         let producer_state = Arc::clone(&self.state);
         let poll_interval = self.config.poll_interval;
 
-        // Spawn producer
+        // Spawn producer. produce_slots loops forever; if it ever does return
+        // an error, surface it via shared state instead of printing onto the
+        // TUI (stdout is the same terminal ratatui draws on).
         let producer = tokio::spawn(async move {
-            if let Err(e) =
-                Self::produce_slots(producer_client, poll_interval, tx, producer_state).await
+            if let Err(e) = Self::produce_slots(
+                producer_client,
+                poll_interval,
+                tx,
+                Arc::clone(&producer_state),
+            )
+            .await
             {
-                eprintln!("Producer error: {}", e);
+                let mut s = producer_state.write().await;
+                s.rpc_error = Some(format!("Producer stopped: {e}"));
             }
         });
 
         // Spawn consumer
         let consumer = tokio::spawn(async move {
-            if let Err(e) = Self::consume_slots(consumer_state, rpc_client, rx).await {
-                eprintln!("Consumer error: {}", e);
+            if let Err(e) = Self::consume_slots(Arc::clone(&consumer_state), rpc_client, rx).await {
+                let mut s = consumer_state.write().await;
+                s.rpc_error = Some(format!("Consumer stopped: {e}"));
             }
         });
 

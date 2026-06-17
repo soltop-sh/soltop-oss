@@ -336,3 +336,65 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(footer, area);
 }
+
+#[cfg(test)]
+mod scroll_tests {
+    use super::*;
+    use crate::stats::NetworkState;
+    use crate::ui::app::App;
+    use crate::ui::types::ProgramStatsDisplay;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tokio::sync::RwLock;
+
+    fn app_with_n(n: usize, selected: usize) -> App {
+        let ns = Arc::new(RwLock::new(NetworkState::new(
+            Duration::from_secs(300),
+            750,
+        )));
+        let mut app = App::new(ns);
+        app.loading = false;
+        app.cached_stats = (0..n)
+            .map(|i| ProgramStatsDisplay {
+                program_id: format!("P{i:02}"),
+                tx_per_sec: 0.0,
+                total_txs: i as u32,
+                success_rate: 0.0,
+                cu_per_sec: 0.0,
+                avg_cu: 0.0,
+                min_cu: 0,
+                max_cu: 0,
+            })
+            .collect();
+        app.selected_row = selected;
+        app.table_state.select(Some(selected));
+        app
+    }
+
+    fn render_to_string(app: &mut App, w: u16, h: u16) -> String {
+        let backend = TestBackend::new(w, h);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| render_main_view(app, f, f.area()))
+            .unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect()
+    }
+
+    #[test]
+    fn last_row_visible_when_selected() {
+        let mut app = app_with_n(30, 29);
+        let content = render_to_string(&mut app, 80, 20);
+        assert!(
+            content.contains("P29"),
+            "selected last row P29 should be scrolled into view; got:\n{content}"
+        );
+    }
+}
