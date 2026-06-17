@@ -34,6 +34,10 @@ pub fn handle_key(app: &mut App, key: KeyCode) {
                 ViewMode::Window => ViewMode::Live,
             };
         }
+        KeyCode::Char('s') if !app.showing_detail => {
+            // Cycle the table sort column
+            app.sort_column = app.sort_column.next();
+        }
         KeyCode::Down if !app.showing_detail => {
             let max_row = app.cached_stats.len().saturating_sub(1);
             app.selected_row = (app.selected_row + 1).min(max_row);

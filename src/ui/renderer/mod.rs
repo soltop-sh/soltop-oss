@@ -1,5 +1,6 @@
 mod charts;
 mod detail_view;
+mod gauges;
 mod main_view;
 
 use super::app::App;

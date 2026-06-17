@@ -3,7 +3,8 @@ use crate::stats::{is_system_program, NetworkState, SlotStats};
 use crate::ui::input;
 use crate::ui::renderer;
 use crate::ui::types::{
-    ChartType, DetailViewMode, NetworkStatsDisplay, ProgramDetail, ProgramStatsDisplay, ViewMode,
+    ChartType, DetailViewMode, NetworkStatsDisplay, ProgramDetail, ProgramStatsDisplay, SortColumn,
+    ViewMode,
 };
 use anyhow::Result;
 use crossterm::event::{self, Event};
@@ -63,6 +64,9 @@ pub struct App {
 
     /// RPC error message from the monitor (None = healthy)
     pub rpc_error: Option<String>,
+
+    /// Column the program table is sorted by (cycle with 's')
+    pub sort_column: SortColumn,
 }
 
 impl App {
@@ -96,6 +100,7 @@ impl App {
             detail_view_mode: DetailViewMode::AllCharts,
             table_state: TableState::default().with_selected(0),
             rpc_error: None,
+            sort_column: SortColumn::Total,
         }
     }
 
@@ -225,8 +230,17 @@ impl App {
             });
         }
 
-        // Sort by total_txs descending
-        display.sort_by_key(|s| Reverse(s.total_txs));
+        // Sort by the active column, descending. f64 columns use partial_cmp
+        // (reversed) since they aren't Ord; ties keep insertion order.
+        // NaN-safe descending compare (a NaN would otherwise panic the TUI).
+        let desc = |x: f64, y: f64| y.partial_cmp(&x).unwrap_or(std::cmp::Ordering::Equal);
+        match self.sort_column {
+            SortColumn::Total => display.sort_by_key(|s| Reverse(s.total_txs)),
+            SortColumn::TxPerSec => display.sort_by(|a, b| desc(a.tx_per_sec, b.tx_per_sec)),
+            SortColumn::CuPerSec => display.sort_by(|a, b| desc(a.cu_per_sec, b.cu_per_sec)),
+            SortColumn::AvgCu => display.sort_by(|a, b| desc(a.avg_cu, b.avg_cu)),
+            SortColumn::SuccessRate => display.sort_by(|a, b| desc(a.success_rate, b.success_rate)),
+        }
 
         // Calculate average success rate (weighted)
         let avg_success_rate = if total_txs > 0 {

@@ -1,30 +1,38 @@
 use crate::ui::app::App;
 use crate::ui::formatting::{format_cu, format_duration, format_large_number};
-use crate::ui::types::ViewMode;
+use crate::ui::renderer::gauges::meter_line;
+use crate::ui::types::{SortColumn, ViewMode};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::Style,
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Paragraph, Row, Table},
     Frame,
 };
 
-/// Render the main view with table, header, and network overview
+/// Display scales for the aggregate gauges. These are soft caps used only to
+/// size the bar fill — values above the cap simply render as full. Chosen to
+/// match typical Solana mainnet ranges.
+const TPS_FULL: f64 = 5_000.0;
+const CU_FULL: f64 = 150_000_000.0; // 150M CU/s
+const LAG_FULL: f64 = 10.0; // slots behind = "full"
+
+/// Render the main view with table, header, meters, and footer
 pub fn render_main_view(app: &mut App, frame: &mut Frame, area: Rect) {
-    // Create main layout: header + network overview + table + footer
+    // Create main layout: header + meters + table + footer
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5), // Header (normal size)
-            Constraint::Length(3), // Network Overview
-            Constraint::Min(10),   // Table (takes remaining space)
+            Constraint::Length(5), // Header (slot + status)
+            Constraint::Length(8), // Meters: per-program core bars + aggregate gauges
+            Constraint::Min(6),    // Table (takes remaining space)
             Constraint::Length(1), // Footer
         ])
         .split(area);
 
     // Render sections
     render_header(app, frame, chunks[0]);
-    render_network_overview(app, frame, chunks[1]);
+    render_meters(app, frame, chunks[1]);
     render_table(app, frame, chunks[2]);
     render_footer(app, frame, chunks[3]);
 }
@@ -175,63 +183,137 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(stats_text, info_chunks[1]);
 }
 
-/// Render the network overview panel
-fn render_network_overview(app: &App, frame: &mut Frame, area: Rect) {
-    let stats = &app.cached_network_stats;
-
-    let overview_block = Block::default()
-        .title(" Network Overview ")
+/// Render the meters region: top-N programs as htop-style "core" bars on the
+/// left, aggregate network gauges on the right.
+fn render_meters(app: &App, frame: &mut Frame, area: Rect) {
+    let block = Block::default()
+        .title(" Network ")
         .borders(Borders::ALL)
         .border_style(app.theme.border_style())
         .title_style(app.theme.header_style());
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
 
-    let inner = overview_block.inner(area);
-    frame.render_widget(overview_block, area);
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+        .split(inner);
 
-    // Create spans with color-coded metrics
-    let spans = vec![
-        Span::styled("Total TPS: ", app.theme.muted_style()),
-        Span::styled(
-            format!("{:.1}", stats.total_tps),
-            Style::default().fg(app.theme.tps_color(stats.total_tps)),
+    render_core_bars(app, frame, cols[0]);
+    render_aggregate_gauges(app, frame, cols[1]);
+}
+
+/// Left column: the busiest programs as per-"core" CU bars, like htop's CPUs.
+/// Each bar's fill is relative to the busiest program shown, so the leader is
+/// always full and the rest read as a share of it.
+fn render_core_bars(app: &App, frame: &mut Frame, area: Rect) {
+    let rows = area.height as usize;
+    if rows == 0 || area.width < 12 {
+        return;
+    }
+
+    let stats = app.get_cached_stats();
+    let top: Vec<_> = stats.iter().take(rows).collect();
+    let max_cu = top.first().map(|s| s.cu_per_sec).unwrap_or(0.0).max(1.0);
+
+    let label_w = 9usize; // truncated program id
+    let bar_w = (area.width as usize).saturating_sub(label_w + 4).max(6);
+
+    let lines: Vec<Line> = top
+        .iter()
+        .map(|s| {
+            let label = if s.program_id.len() > label_w {
+                format!("{}…", &s.program_id[..label_w - 1])
+            } else {
+                s.program_id.clone()
+            };
+            meter_line(
+                &label,
+                s.cu_per_sec / max_cu,
+                &format_cu(s.cu_per_sec),
+                label_w,
+                bar_w,
+                &app.theme,
+            )
+        })
+        .collect();
+
+    frame.render_widget(Paragraph::new(lines), area);
+}
+
+/// Right column: aggregate network gauges (TPS, CU/s, Success, Lag).
+fn render_aggregate_gauges(app: &App, frame: &mut Frame, area: Rect) {
+    if area.height == 0 || area.width < 12 {
+        return;
+    }
+    let stats = &app.cached_network_stats;
+    let lag = stats.latest_network_slot.saturating_sub(stats.current_slot);
+
+    let label_w = 8usize;
+    let bar_w = (area.width as usize).saturating_sub(label_w + 4).max(6);
+
+    let lines = vec![
+        meter_line(
+            "TPS",
+            stats.total_tps / TPS_FULL,
+            &format!("{:.0}", stats.total_tps),
+            label_w,
+            bar_w,
+            &app.theme,
         ),
-        Span::raw("  │  "),
-        Span::styled("Total Txs: ", app.theme.muted_style()),
-        Span::styled(
-            format_large_number(stats.total_txs),
-            app.theme.normal_style(),
+        meter_line(
+            "CU/s",
+            stats.total_cu_per_sec / CU_FULL,
+            &format_cu(stats.total_cu_per_sec),
+            label_w,
+            bar_w,
+            &app.theme,
         ),
-        Span::raw("  │  "),
-        Span::styled("Avg Success: ", app.theme.muted_style()),
-        Span::styled(
-            format!("{:.1}%", stats.avg_success_rate),
-            Style::default().fg(app.theme.success_rate_color(stats.avg_success_rate)),
+        meter_line(
+            "Success",
+            stats.avg_success_rate / 100.0,
+            &format!("{:.1}%", stats.avg_success_rate),
+            label_w,
+            bar_w,
+            &app.theme,
         ),
-        Span::raw("  │  "),
-        Span::styled("Total CU/s: ", app.theme.muted_style()),
-        Span::styled(
-            format_cu(stats.total_cu_per_sec),
-            Style::default().fg(app.theme.cu_per_sec_color(stats.total_cu_per_sec)),
+        meter_line(
+            "Lag",
+            lag as f64 / LAG_FULL,
+            &format!("{lag} sl"),
+            label_w,
+            bar_w,
+            &app.theme,
         ),
     ];
 
-    let overview_text = Paragraph::new(Line::from(spans)).alignment(Alignment::Center);
-
-    frame.render_widget(overview_text, inner);
+    frame.render_widget(Paragraph::new(lines), area);
 }
 
 /// Render the statistics table
 fn render_table(app: &mut App, frame: &mut Frame, area: Rect) {
-    // Table header with neon green
+    // Table header with neon green. The active sort column gets a ▼ marker and
+    // is rendered reversed so it stands out (htop-style).
+    let head_cell = |label: &str, col: Option<SortColumn>| -> Cell {
+        if col == Some(app.sort_column) {
+            Cell::from(format!("{label} ▼")).style(
+                Style::default()
+                    .fg(app.theme.neon_green)
+                    .add_modifier(Modifier::REVERSED | Modifier::BOLD),
+            )
+        } else {
+            Cell::from(label.to_string())
+        }
+    };
     let header = Row::new(vec![
-        Cell::from("Program ID"),
-        Cell::from("Txs/s"),
-        Cell::from("CU/s"),
-        Cell::from("Avg CU"),
-        Cell::from("Min CU"),
-        Cell::from("Max CU"),
-        Cell::from("Total"),
-        Cell::from("Success%"),
+        head_cell("Program ID", None),
+        head_cell("Txs/s", Some(SortColumn::TxPerSec)),
+        head_cell("CU/s", Some(SortColumn::CuPerSec)),
+        head_cell("Avg CU", Some(SortColumn::AvgCu)),
+        head_cell("Min CU", None),
+        head_cell("Max CU", None),
+        head_cell("Total", Some(SortColumn::Total)),
+        head_cell("Success%", Some(SortColumn::SuccessRate)),
     ])
     .style(app.theme.table_header_style())
     .height(1);
@@ -327,7 +409,8 @@ fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
         // Main view shortcuts
         &[
             ("↑/↓", "Navigate"),
-            ("ENTER", "View Details"),
+            ("ENTER", "Details"),
+            ("s", "Sort"),
             ("t", "Toggle IDs"),
             ("u", "Filter System"),
             ("w", "Window View"),
@@ -409,6 +492,31 @@ mod scroll_tests {
         assert!(
             content.contains("P29"),
             "selected last row P29 should be scrolled into view; got:\n{content}"
+        );
+    }
+
+    #[test]
+    fn meters_show_top_program_and_gauges() {
+        let mut app = app_with_n(30, 0);
+        // give the leader a distinctive id we can find in the core bars
+        app.cached_stats[0].program_id = "LEADERxx".to_string();
+        app.cached_stats[0].cu_per_sec = 99_000_000.0;
+        app.cached_network_stats.total_tps = 1234.0;
+        let content = render_to_string(&mut app, 110, 24);
+        assert!(content.contains("LEADER"), "core bar for leader missing");
+        assert!(content.contains("TPS"), "TPS gauge missing");
+        assert!(content.contains("Success"), "Success gauge missing");
+    }
+
+    #[test]
+    fn active_sort_column_marked() {
+        let mut app = app_with_n(10, 0);
+        app.sort_column = SortColumn::CuPerSec;
+        let content = render_to_string(&mut app, 110, 24);
+        // the ▼ marker should sit next to the active column header
+        assert!(
+            content.contains("CU/s ▼"),
+            "active sort marker missing; got:\n{content}"
         );
     }
 }
