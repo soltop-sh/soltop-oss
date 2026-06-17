@@ -131,18 +131,30 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     .style(app.theme.normal_style());
     frame.render_widget(slot_text, info_chunks[0]);
 
-    // Line 2: Uptime, Window, Programs with mode indicators
-    let mut status_parts = vec![
-        format!("Uptime: {}", format_duration(stats.uptime)),
-        format!("Window: {}", format_duration(stats.window_duration)),
-        format!("Programs: {}", stats.program_count),
-    ];
+    // Line 2: Uptime, Window, Programs with mode indicators.
+    // Built from spans so the [RPC ERROR] indicator can stand out in red while
+    // the rest of the line stays muted.
+    let base = format!(
+        "Uptime: {} │ Window: {} │ Programs: {}",
+        format_duration(stats.uptime),
+        format_duration(stats.window_duration),
+        stats.program_count
+    );
+    let mut spans = vec![Span::styled(base, app.theme.muted_style())];
 
-    // Add mode indicators
-    let mut indicators = Vec::new();
+    // RPC error is the most important indicator — show it first, in red+bold.
     if app.rpc_error.is_some() {
-        indicators.push("[RPC ERROR]");
+        spans.push(Span::styled(" │ ", app.theme.muted_style()));
+        spans.push(Span::styled(
+            "[RPC ERROR]",
+            Style::default()
+                .fg(ratatui::style::Color::Red)
+                .add_modifier(ratatui::style::Modifier::BOLD),
+        ));
     }
+
+    // Remaining mode indicators stay muted.
+    let mut indicators = Vec::new();
     if app.truncate_ids {
         indicators.push("[TRUNCATED]");
     }
@@ -152,12 +164,14 @@ fn render_header(app: &App, frame: &mut Frame, area: Rect) {
     if app.view_mode == ViewMode::Window {
         indicators.push("[WINDOW VIEW]");
     }
-
     if !indicators.is_empty() {
-        status_parts.push(indicators.join(" "));
+        spans.push(Span::styled(
+            format!(" │ {}", indicators.join(" ")),
+            app.theme.muted_style(),
+        ));
     }
 
-    let stats_text = Paragraph::new(status_parts.join(" │ ")).style(app.theme.muted_style());
+    let stats_text = Paragraph::new(Line::from(spans));
     frame.render_widget(stats_text, info_chunks[1]);
 }
 
