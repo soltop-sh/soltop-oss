@@ -1,10 +1,21 @@
 use super::app::App;
+use super::theme::Theme;
 use super::types::{ChartType, DetailViewMode, ViewMode};
 use crossterm::event::KeyCode;
 
 /// Handle keyboard input
 pub fn handle_key(app: &mut App, key: KeyCode) {
+    // The theme picker overlay captures all input while open.
+    if app.show_theme_menu {
+        handle_theme_menu_key(app, key);
+        return;
+    }
+
     match key {
+        KeyCode::Char('T') | KeyCode::F(2) => {
+            // Open the theme picker
+            app.show_theme_menu = true;
+        }
         KeyCode::Esc => {
             if app.showing_detail {
                 // Return to main view from detail view
@@ -33,6 +44,10 @@ pub fn handle_key(app: &mut App, key: KeyCode) {
                 ViewMode::Live => ViewMode::Window,
                 ViewMode::Window => ViewMode::Live,
             };
+        }
+        KeyCode::Char('s') if !app.showing_detail => {
+            // Cycle the table sort column
+            app.sort_column = app.sort_column.next();
         }
         KeyCode::Down if !app.showing_detail => {
             let max_row = app.cached_stats.len().saturating_sub(1);
@@ -65,6 +80,26 @@ pub fn handle_key(app: &mut App, key: KeyCode) {
                 };
             }
         },
+        _ => {}
+    }
+}
+
+/// Input handling while the theme picker overlay is open. ↑/↓ change the theme
+/// live; Enter/Esc/T close it.
+fn handle_theme_menu_key(app: &mut App, key: KeyCode) {
+    let count = Theme::presets().len();
+    match key {
+        KeyCode::Up => {
+            app.theme_index = (app.theme_index + count - 1) % count;
+            app.theme = Theme::presets()[app.theme_index];
+        }
+        KeyCode::Down => {
+            app.theme_index = (app.theme_index + 1) % count;
+            app.theme = Theme::presets()[app.theme_index];
+        }
+        KeyCode::Enter | KeyCode::Esc | KeyCode::Char('T') => {
+            app.show_theme_menu = false;
+        }
         _ => {}
     }
 }

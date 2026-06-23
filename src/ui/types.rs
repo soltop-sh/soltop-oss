@@ -23,6 +23,40 @@ pub enum DetailViewMode {
     FullScreen, // Show single chart full size
 }
 
+/// Column the program table is sorted by (cycle with 's').
+#[derive(Clone, Copy, PartialEq)]
+pub enum SortColumn {
+    TxPerSec,
+    CuPerSec,
+    AvgCu,
+    Total,
+    SuccessRate,
+}
+
+impl SortColumn {
+    /// Cycle to the next sort column.
+    pub fn next(self) -> Self {
+        match self {
+            SortColumn::TxPerSec => SortColumn::CuPerSec,
+            SortColumn::CuPerSec => SortColumn::AvgCu,
+            SortColumn::AvgCu => SortColumn::Total,
+            SortColumn::Total => SortColumn::SuccessRate,
+            SortColumn::SuccessRate => SortColumn::TxPerSec,
+        }
+    }
+
+    /// Table header label this column sorts (for the active-sort indicator).
+    pub fn header(self) -> &'static str {
+        match self {
+            SortColumn::TxPerSec => "Txs/s",
+            SortColumn::CuPerSec => "CU/s",
+            SortColumn::AvgCu => "Avg CU",
+            SortColumn::Total => "Total",
+            SortColumn::SuccessRate => "Success%",
+        }
+    }
+}
+
 /// Struct for displaying program stats in UI
 pub struct ProgramStatsDisplay {
     pub program_id: String,

@@ -6,7 +6,7 @@ use ratatui::{
     style::Style,
     symbols,
     text::Span,
-    widgets::{Axis, Block, Borders, Chart, Dataset, GraphType},
+    widgets::{Axis, Chart, Dataset, GraphType},
     Frame,
 };
 
@@ -42,37 +42,19 @@ pub fn render_tx_chart(app: &App, frame: &mut Frame, area: Rect, detail: &Progra
         .style(Style::default().fg(app.theme.neon_green))
         .data(&data);
 
-    // Create X axis
+    // Borderless axes (htop/btop style): no titles, minimal labels.
     let x_labels = generate_time_labels(app, detail.slot_timeline.len());
     let x_axis = Axis::default()
-        .title("Time")
         .style(app.theme.muted_style())
         .bounds([0.0, data.len() as f64])
         .labels(x_labels);
 
-    // Create Y axis
     let y_axis = Axis::default()
-        .title("Tx Count")
         .style(app.theme.muted_style())
         .bounds([0.0, y_max])
-        .labels(vec![
-            Span::raw("0"),
-            Span::raw(format!("{:.0}", y_max / 2.0)),
-            Span::raw(format!("{:.0}", y_max)),
-        ]);
+        .labels(vec![Span::raw("0"), Span::raw(format!("{:.0}", y_max))]);
 
-    // Create chart
-    let chart = Chart::new(vec![dataset])
-        .block(
-            Block::default()
-                .title(" Transaction Activity (Last 5min) ")
-                .borders(Borders::ALL)
-                .border_style(app.theme.border_style())
-                .title_style(app.theme.header_style()),
-        )
-        .x_axis(x_axis)
-        .y_axis(y_axis);
-
+    let chart = Chart::new(vec![dataset]).x_axis(x_axis).y_axis(y_axis);
     frame.render_widget(chart, area);
 }
 
@@ -108,36 +90,18 @@ pub fn render_cu_chart(app: &App, frame: &mut Frame, area: Rect, detail: &Progra
         .style(Style::default().fg(app.theme.cyan))
         .data(&data);
 
-    // Create axes
     let x_labels = generate_time_labels(app, detail.slot_timeline.len());
     let x_axis = Axis::default()
-        .title("Time")
         .style(app.theme.muted_style())
         .bounds([0.0, data.len() as f64])
         .labels(x_labels);
 
     let y_axis = Axis::default()
-        .title("Compute Units")
         .style(app.theme.muted_style())
         .bounds([0.0, y_max])
-        .labels(vec![
-            Span::raw("0"),
-            Span::raw(format_cu(y_max / 2.0)),
-            Span::raw(format_cu(y_max)),
-        ]);
+        .labels(vec![Span::raw("0"), Span::raw(format_cu(y_max))]);
 
-    // Create chart
-    let chart = Chart::new(vec![dataset])
-        .block(
-            Block::default()
-                .title(" Compute Units Usage (Last 5min) ")
-                .borders(Borders::ALL)
-                .border_style(app.theme.border_style())
-                .title_style(app.theme.header_style()),
-        )
-        .x_axis(x_axis)
-        .y_axis(y_axis);
-
+    let chart = Chart::new(vec![dataset]).x_axis(x_axis).y_axis(y_axis);
     frame.render_widget(chart, area);
 }
 
@@ -171,32 +135,18 @@ pub fn render_success_chart(app: &App, frame: &mut Frame, area: Rect, detail: &P
         .style(Style::default().fg(color))
         .data(&data);
 
-    // Create axes
     let x_labels = generate_time_labels(app, detail.slot_timeline.len());
     let x_axis = Axis::default()
-        .title("Time")
         .style(app.theme.muted_style())
         .bounds([0.0, data.len() as f64])
         .labels(x_labels);
 
     let y_axis = Axis::default()
-        .title("Success Rate (%)")
         .style(app.theme.muted_style())
         .bounds([0.0, 100.0])
-        .labels(vec![Span::raw("0%"), Span::raw("50%"), Span::raw("100%")]);
+        .labels(vec![Span::raw("0%"), Span::raw("100%")]);
 
-    // Create chart
-    let chart = Chart::new(vec![dataset])
-        .block(
-            Block::default()
-                .title(" Success Rate (Last 5min) ")
-                .borders(Borders::ALL)
-                .border_style(app.theme.border_style())
-                .title_style(app.theme.header_style()),
-        )
-        .x_axis(x_axis)
-        .y_axis(y_axis);
-
+    let chart = Chart::new(vec![dataset]).x_axis(x_axis).y_axis(y_axis);
     frame.render_widget(chart, area);
 }
 

@@ -12,9 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `println!`/`eprintln!` calls in the slot monitor that wrote to the same terminal ratatui draws on, corrupting the TUI (e.g. a stray "Consumer shutting down" line). Fatal producer/consumer errors now surface via the on-screen RPC error indicator instead.
 
 ### Changed
+- Borderless, htop-style layout: dropped the box borders around all panels in favor of full-width inverted bars — an inverted title bar, an inverted column header, and an inverted Fn-key footer (green chrome), with the cyan selection bar marking the active row.
+- Program detail page restyled to match: inverted title bar (`Program · <id>`), a Success gauge reusing the meter component, compact key/value stats, and the three timeseries as borderless braille line graphs under inverted mini-header bars (`Transactions` / `Compute Units` / `Success Rate`).
 - The `[RPC ERROR]` header indicator is now rendered in red + bold so it stands out against the muted status line.
+- The whole screen is now painted with the active theme's background, so the terminal's own background never shows through.
+- Selected table row is highlighted with a full-width bar (htop-style) instead of a per-cell background.
 
 ### Added
+- htop-style "Network" meters panel replacing the plain text overview: TPS, CU/s, Success, and Lag rendered as bracketed gauge bars (2×2) with the brand green→amber→red gradient.
+- Sortable program table: press `s` to cycle the sort column (Txs/s → CU/s → Avg CU → Total → Success%); the active column is marked with a ▼ and rendered reversed.
+- Theme picker: press `T` (or F2) to open an overlay and switch themes live with ↑/↓. Each preset has its own background. Presets: **Flatline** (neon green on black), **Matrix** (green on dark green), **Mono** (grayscale), **Amber** (retro CRT on brown), **Blue** (Windows/PowerShell light-on-navy).
 - Regression test verifying the program statistics table scrolls to keep the selected row visible when navigating past the visible area.
 
 ## [0.1.0] - 2025-12-29
