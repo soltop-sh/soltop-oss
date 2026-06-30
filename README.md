@@ -84,8 +84,37 @@ Options:
       --rpc-url <URL>      RPC endpoint URL
                            [default: https://api.mainnet-beta.solana.com]
       --hide-system        Hide system programs (Vote, ComputeBudget, System)
+      --transport <KIND>   Block source: http (polling) or ws (blockSubscribe)
+                           [default: http]
+      --ws-url <URL>       WebSocket endpoint URL
+                           [default: derived from --rpc-url]
   -h, --help               Print help information
 ```
+
+### WebSocket Transport
+
+By default soltop polls the RPC endpoint (`getSlot` + one `getBlock` per slot),
+which is correct but call-heavy and gets throttled on free/public endpoints.
+With `--transport ws` it instead subscribes via `blockSubscribe` and processes
+blocks as the validator pushes them — no polling.
+
+```bash
+# Stream blocks over WebSocket (URL derived from --rpc-url)
+soltop --transport ws --rpc-url https://your-endpoint.com
+
+# Or point at a WebSocket URL explicitly
+soltop --transport ws --ws-url wss://your-endpoint.com
+```
+
+**Endpoint requirement:** `blockSubscribe` is an unstable/optional RPC method.
+The validator must be started with `--rpc-pubsub-enable-block-subscription`, and
+most public endpoints (including the default mainnet endpoint) disable it. When
+`blockSubscribe` isn't available, soltop automatically falls back to
+`slotSubscribe` + `getBlock`, which removes the slot poll but still fetches each
+block. If neither subscription is supported, the `[RPC ERROR]` indicator
+explains why. HTTP polling (`--transport http`) remains the default and is
+unaffected. Dropped WebSocket connections reconnect automatically with
+exponential backoff.
 
 ### Keyboard Controls
 
@@ -156,6 +185,9 @@ soltop/
 │   │   └── types.rs     # RPC response types
 │   ├── stats/           # Statistics collection and aggregation
 │   │   ├── monitor.rs   # Main monitoring coordinator (producer/consumer)
+│   │   ├── transport/   # Block sources feeding the pipeline
+│   │   │   ├── http.rs  # HTTP polling (getSlot + getBlock)
+│   │   │   └── ws.rs    # WebSocket push (blockSubscribe)
 │   │   ├── network.rs   # Network-wide state management
 │   │   ├── program.rs   # Per-program statistics
 │   │   ├── ring_buffer.rs # Efficient circular buffer
@@ -168,7 +200,7 @@ soltop/
 
 ### How It Works
 
-1. **Data Collection**: Polls Solana RPC endpoint every 400ms for new slots
+1. **Data Collection**: Polls the Solana RPC endpoint every 400ms for new slots, or streams them over WebSocket with `--transport ws`
 2. **Parsing**: Extracts program invocations and compute unit usage from transaction logs
 3. **Aggregation**: Maintains rolling window of statistics using ring buffers (5-minute window)
 4. **Rendering**: Updates TUI at ~10fps with cached statistics
