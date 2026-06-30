@@ -8,4 +8,7 @@ mod types;
 
 pub use client::RpcClient;
 pub use parser::{extract_program_cu, extract_program_cu_timed};
-pub use types::{BlockData, LogMessage, SlotResponse, TransactionData};
+pub use types::{
+    BlockData, BlockNotification, LogMessage, SlotNotification, SlotResponse, SubscriptionAck,
+    TransactionData,
+};

@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Selected table row is highlighted with a full-width bar (htop-style) instead of a per-cell background.
 
 ### Added
+- WebSocket transport (`--transport ws`) that subscribes via `blockSubscribe`, so the validator pushes full blocks instead of soltop polling `getSlot`/`getBlock`. Drops/reconnects use exponential backoff and surface through the existing `[RPC ERROR]` indicator. Endpoints without `blockSubscribe` (most public ones) automatically fall back to `slotSubscribe` + `getBlock`, which still removes the slot poll. HTTP polling remains the default. Optional `--ws-url` overrides the URL derived from `--rpc-url`. Requires the validator to run with `--rpc-pubsub-enable-block-subscription`.
 - htop-style "Network" meters panel replacing the plain text overview: TPS, CU/s, Success, and Lag rendered as bracketed gauge bars (2×2) with the brand green→amber→red gradient.
 - Sortable program table: press `s` to cycle the sort column (Txs/s → CU/s → Avg CU → Total → Success%); the active column is marked with a ▼ and rendered reversed.
 - Theme picker: press `T` (or F2) to open an overlay and switch themes live with ↑/↓. Each preset has its own background. Presets: **Flatline** (neon green on black), **Matrix** (green on dark green), **Mono** (grayscale), **Amber** (retro CRT on brown), **Blue** (Windows/PowerShell light-on-navy).

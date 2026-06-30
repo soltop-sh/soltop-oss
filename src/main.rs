@@ -9,7 +9,7 @@ use std::io;
 use std::time::Duration;
 
 use soltop::ui::App;
-use soltop::{MonitorConfig, NetworkMonitor};
+use soltop::{MonitorConfig, NetworkMonitor, TransportKind};
 
 #[derive(Parser, Debug)]
 #[command(name = "soltop")]
@@ -30,6 +30,14 @@ struct Args {
     /// Hide system programs (Vote, ComputeBudget, System)
     #[arg(long)]
     hide_system: bool,
+
+    /// Block source: `http` polling (default) or `ws` (blockSubscribe push)
+    #[arg(long, value_enum, default_value_t = TransportKind::Http)]
+    transport: TransportKind,
+
+    /// WebSocket endpoint URL (defaults to ws(s):// derived from --rpc-url)
+    #[arg(long)]
+    ws_url: Option<String>,
 }
 
 #[tokio::main]
@@ -43,6 +51,8 @@ async fn main() -> Result<()> {
         window_duration: Duration::from_secs(5 * 60), // 5 minutes
         buffer_capacity: 750,
         poll_interval: Duration::from_millis(400),
+        transport: args.transport,
+        ws_url: args.ws_url,
     };
 
     // Create monitor

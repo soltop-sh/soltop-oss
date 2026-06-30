@@ -61,3 +61,58 @@ pub struct LogMessage {
     pub program_id: String,
     pub message: String,
 }
+
+/// JSON-RPC error object, returned when a pubsub method isn't enabled on the
+/// endpoint (e.g. `blockSubscribe` without `--rpc-pubsub-enable-block-subscription`).
+#[derive(Debug, Deserialize)]
+pub struct RpcError {
+    pub code: i64,
+    pub message: String,
+}
+
+/// Reply to a `*Subscribe` request: `result` holds the subscription id on
+/// success, `error` is populated when the method is unavailable.
+#[derive(Debug, Deserialize)]
+pub struct SubscriptionAck {
+    pub result: Option<u64>,
+    pub error: Option<RpcError>,
+}
+
+/// `blockNotification` pushed by `blockSubscribe`.
+#[derive(Debug, Deserialize)]
+pub struct BlockNotification {
+    pub params: BlockNotificationParams,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlockNotificationParams {
+    pub result: BlockNotificationResult,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlockNotificationResult {
+    pub value: BlockNotificationValue,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BlockNotificationValue {
+    pub slot: u64,
+    /// Absent when the slot was skipped or the block isn't available yet.
+    pub block: Option<BlockData>,
+}
+
+/// `slotNotification` pushed by `slotSubscribe` (used by the fallback path).
+#[derive(Debug, Deserialize)]
+pub struct SlotNotification {
+    pub params: SlotNotificationParams,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SlotNotificationParams {
+    pub result: SlotNotificationResult,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SlotNotificationResult {
+    pub slot: u64,
+}
